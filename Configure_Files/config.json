@@ -1,0 +1,63 @@
+{
+    "OutputNames": {//output file names
+        "output_total_seg": "TotalSegmentator_Outputs",
+        "output_XCAT": "XCAT_Outputs",
+        "output_PBPK": "PBPK_Outputs",
+        "output_SIMIND": "SIMIND_Outputs",
+        "output_GATE": "GATE_Outputs",
+        "output_PyTomography": "PyTomography_Outputs"
+    },
+    "InputPaths":{
+        "ct_input_dicom" : "/Users/peteryazdi/Desktop/BC_Cancer/TDT/input/Scans_Fereshteh/11-37493/11-37493_11-37493_CT_2011-12-15_112426_._CT.WB.50cm_n263__00000/"
+    }, 
+    "TotalSegmentator": {
+        "device":"cpu", 
+        "fast":true,
+        "roi_subset":["liver", "pancreas", "esophagus"],          
+        "ml":true,                 // single multilabel NIfTI instead of per-class files
+        "statistics":false,         // writes statistics.json
+        "radiomics":false          // writes statistics_radiomics.json 
+    },
+    "PBPK": {
+        "HotTotalAmount": 7.5,  // Total amount of hot tracer [nmol]
+        "ColdTotalAmount": 90,  // Total amount of cold tracer [nmol]
+        "LambdaPhys": 7.15e-05, // Physical decay constant [1/min]
+        "StopTime": 500,    // To be removed
+        "FrameStartTimes": [100, 200, 300],   // Start time of each frame [min]
+        "FrameDurations": [10], // Duration of each frame [seconds] - accounted for in SIMIND?????
+        "VOIs": ["Tumor1", "Tumor2", "Background", "SG", "Liver", "Prostate", "Spleen", "RedMarrow", "Bone", "Muscle", "Heart", "Lungs", "Brain", "Skin", "GI", "Kidney", "Arteries", "Veins"]
+    },
+    "XCAT": {
+        "XCATDirectory": "/Users/peteryazdi/Desktop/BC_Cancer/TDT/XCAT/XCAT_program_with_lymph",    // Path to XCAT executable
+        "PixelWidth": 0.125, // Pixel width [cm]
+        "SliceWidth": 0.125, // Slice width [cm]
+        "InputImgSize": 512,    // Dimensions of image used for simulation
+        "FOV": "Torso", //Scan FOV - options are "WholeBody", "EyestoThighs", "Torso", or "Custom"
+        "CustomStartSlice": 220, //Start slice for custom FOV
+        "CustomEndSlice": 250,  //End slice for custom FOV
+        "LesionDiameter": [],   //Diameter of lesions [mm] - takes list of diameters (also defines number of lesions)
+        "LesionCoordinates":[]  //Coordinates of lesions [mm] - takes list of lists [[x1,y1,z1],[x2,y2,z2],...]
+    },
+    "NiiProccessing":{
+        //"ts_classes" : totalseg_classmap.class_map["total"],
+        "output_path" : "/Users/peteryazdi/Desktop/BC_Cancer/TDT/modules/TOTSEG",
+        //"output_file_name" : f"{datetime.date.today()}_Segmenation",
+        "roi_subset" : ["liver", "pancreas", "esophagus"]
+
+    },
+    "SIMIND": {
+        "SIMINDDirectory": "/Users/peteryazdi/Desktop/BC_Cancer/TDT/bin/scattwin.win",    // Path to SIMIND executable
+        "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
+        "Isotope": "lu177",    // Isotope type - refer to SIMIND documentation
+        "NumProjections": 10,   // Number of projections
+        "NumPhotons": 10e6,    // Number of photons
+        "DetectorDistance": 10, // Detector distance [cm]
+        "OutputImgSize": 64,   // Output image dimensions
+        "OutputPixelSize": 0.5, // Output pixel size [cm]
+        "OutputSliceWidth": 0.5 // Output slice width [cm]
+    },
+    "Recon": {
+        "Iterations": 4,    // Number of iterations used in reconstruction
+        "Subsets": 8    // Number of subsets used in reconstruction
+    }
+}

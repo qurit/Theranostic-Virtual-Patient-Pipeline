@@ -83,23 +83,21 @@ def segmentation_2_class(nii_arr,classes,roi = roi_subset):
     
     The Total Seg Classes are saved as a Python file in dict form
     
-    ie {0: 'Background', 5: 'liver', 7: 'pancreas', 15: 'esophagus'}
+    ie {'Background': 0, 'liver': 5, 'pancreas': 7, 'esophagus': 15}
     
     """
     #for segmentation linking to classes
     print(f"[NII_PROCCESSING] Roi Subset: {roi}")
     print(f"[NII_PROCCESSING] Unique Segmentation Values: {np.unique(nii_arr)}")
 
-    # Assumes `classes` is {int_id: "name"}.
     class_seg = {}
-    for n in np.unique(nii_arr).astype(int):
+    for n in np.unique(nii_arr):
         if n == 0:
-            class_seg[0] = "Background"
+            class_seg["Background"] = 0
         else:
             name = classes.get(n)
             #print (name)
-            if name is not None and (roi is None or name in roi):
-                class_seg[n] = name
+            class_seg[name] = int(n)
     return class_seg
 
 def segmentation_multiple_arrays(seg_arr):
@@ -408,12 +406,13 @@ def NII_PROCCESSING(output_path,output_file_name,classes):
     print(f"[NII_PROCCESSING] Attenution bin Saved:\n[NII_PROCCESSING]{atn_av_path}")
     
     
-    #dummy pbpk seg arr as bin 
-    bin_path = os.path.join(f"{output_path}/{output_file_name}", "_act_av.bin")
-    segmentated_ml_output_arr.tofile(bin_path)
+    #simind stuff
+    pixel_spacing_x = ct_input_header['pixdim'][1]*0.1  # Pixel width in x-direction (cm)
+    pixel_spacing_y = ct_input_header['pixdim'][2]*0.1  # Pixel width in y-direction (cm)
+
+    slice_thickness = ct_input_header['pixdim'][3]*0.1  # Slice thickness (z-direction spacing) (cm)
     
-    
-    return ct_input_arr,segmentated_ml_output_arr, class_seg, masks, atn_av_path 
+    return ct_input_arr,segmentated_ml_output_arr, class_seg, masks, atn_av_path , pixel_spacing_x, slice_thickness
      
 
 #ct_input_arr,segmentated_ml_output_arr, class_seg, masks, atn_av_path = NII_PROCCESSING(output_path,output_file_name,classes)

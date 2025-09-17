@@ -1,7 +1,6 @@
 {
     "OutputNames": {//output file names
         "output_total_seg": "TotalSegmentator_Outputs",
-        "output_XCAT": "XCAT_Outputs",
         "output_PBPK": "PBPK_Outputs",
         "output_SIMIND": "SIMIND_Outputs",
         "output_GATE": "GATE_Outputs",
@@ -24,33 +23,14 @@
         "LambdaPhys": 7.15e-05, // Physical decay constant [1/min]
         "StopTime": 500,    // To be removed
         "FrameStartTimes": [100, 200, 300],   // Start time of each frame [min]
-        "FrameDurations": [10], // Duration of each frame [seconds] - accounted for in SIMIND?????
-        "VOIs": ["Tumor1", "Tumor2", "Background", "SG", "Liver", "Prostate", "Spleen", "RedMarrow", "Bone", "Muscle", "Heart", "Lungs", "Brain", "Skin", "GI", "Kidney", "Arteries", "Veins"]
-    },
-    "XCAT": {
-        "XCATDirectory": "/Users/peteryazdi/Desktop/BC_Cancer/TDT/XCAT/XCAT_program_with_lymph",    // Path to XCAT executable
-        "PixelWidth": 0.125, // Pixel width [cm]
-        "SliceWidth": 0.125, // Slice width [cm]
-        "InputImgSize": 512,    // Dimensions of image used for simulation
-        "FOV": "Torso", //Scan FOV - options are "WholeBody", "EyestoThighs", "Torso", or "Custom"
-        "CustomStartSlice": 220, //Start slice for custom FOV
-        "CustomEndSlice": 250,  //End slice for custom FOV
-        "LesionDiameter": [],   //Diameter of lesions [mm] - takes list of diameters (also defines number of lesions)
-        "LesionCoordinates":[]  //Coordinates of lesions [mm] - takes list of lists [[x1,y1,z1],[x2,y2,z2],...]
-    },
-    "NiiProccessing":{
-        //"ts_classes" : totalseg_classmap.class_map["total"],
-        "output_path" : "/Users/peteryazdi/Desktop/BC_Cancer/TDT/modules/TOTSEG",
-        //"output_file_name" : f"{datetime.date.today()}_Segmenation",
-        "roi_subset" : ["liver", "pancreas", "esophagus"]
-
+        "FrameDurations": [10] // Duration of each frame [seconds] - accounted for in SIMIND?????
     },
     "SIMIND": {
-        "SIMINDDirectory": "/Users/peteryazdi/Desktop/BC_Cancer/TDT/bin/scattwin.win",    // Path to SIMIND executable
+        "SIMINDDirectory": "/Users/peteryazdi/Desktop/BC_Cancer/TDT/modules/SIMIND_SPECT/simind",    // Path to SIMIND executable
         "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
         "Isotope": "lu177",    // Isotope type - refer to SIMIND documentation
         "NumProjections": 10,   // Number of projections
-        "NumPhotons": 10e6,    // Number of photons
+        "NumPhotons": 1e5,    // Number of photons
         "DetectorDistance": 10, // Detector distance [cm]
         "OutputImgSize": 64,   // Output image dimensions
         "OutputPixelSize": 0.5, // Output pixel size [cm]

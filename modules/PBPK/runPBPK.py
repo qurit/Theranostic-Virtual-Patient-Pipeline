@@ -1,42 +1,102 @@
-import matlab.engine
 import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+import pycno
+import os
 
-def runPBPK(config):
-    print("Modeling PBPK...")
-    eng = matlab.engine.start_matlab()
-    eng.addpath('modules/matlab', nargout=0)
-
-    eng.workspace['HotTotalAmount'] = config["PBPK"]["HotTotalAmount"]
-    eng.workspace['ColdTotalAmount'] = config["PBPK"]["ColdTotalAmount"]
-    eng.workspace['LambdaPhys'] = config["PBPK"]["LambdaPhys"]
-    eng.workspace['StopTime'] = config["PBPK"]["StopTime"]
-
-    eng.runPBPK(nargout=0)
+def runPBPK(out_paths, pbpk_para, totseg_para, ct_input_arr, pixel_spacing_x,slice_thickness,segmentated_ml_output_arr,masks,class_seg):
     
-    time = np.array(eng.workspace['time']).flatten()
-    TACs = np.array(eng.workspace['TACs'])
-    VOI_List = ["Tumor1", "Tumor2", "Background", "SG", "Liver", "Prostate", "Spleen", "RedMarrow", "Bone", "Muscle", "Heart", "Lungs", "Brain", "Skin", "GI", "Kidney", "Arteries", "Veins"]
-
-    eng.quit()
-
-    ImgAct = np.zeros((len(config["PBPK"]["FrameStartTimes"]), len(VOI_List)))
-
-    for VOI in config["PBPK"]["VOIs"]:
-        VOI_index = VOI_List.index(VOI)
-        ActInterpolate = interp1d(time, TACs[:, VOI_index], kind='linear')
-
-        ImgAct[:, VOI_index] = ActInterpolate(config["PBPK"]["FrameStartTimes"])
-
-    FrameAct = np.sum(ImgAct, axis=1)
+    print("[PBPK] Beginning creating Time Activity Curves")
     
+    VOIs_possible = ['Tumor1', 'Tumor2', 'Kidney', 'Heart', 'SG', 'Bone', 'TumorRest', 'Spleen', 'Liver', 'Prostate', 'GI', 'Rest', 'Skin', 'Muscle', 'Brain', 'RedMarrow', 'Lungs', 'Adipose']
+    
+    roi_2_VOI = {
+#        "NA":'Tumor1', 
+#        "NA":'Tumor2', 
+        "kidney_right":'Kidney', 
+        "kidney_left":'Kidney',
+        "heart":'Heart', 
+        #'SG',
+        #'Bone',
+        #'TumorRest', 
+        'spleen':'Spleen', 
+        'liver':'Liver', 
+        "prostate":'Prostate'
+        #'GI', 
+        #'Rest',
+        #'Skin',
+        #'Muscle',
+        #'Brain',
+        #'RedMarrow',
+        #'Lungs',
+        #'Adipose'
+        }
+
+    roi_list = totseg_para['roi_subset']
+    
+
+    time, TACs = pycno.run_model(model_name="PSMA", stop=pbpk_para['StopTime'])
+    
+    print("[PBPK] TAC created!")
+
+    del class_seg['Background']
+    #print(class_seg)
+    
+    FrameArrs = np.zeros((len(pbpk_para["FrameStartTimes"]),*segmentated_ml_output_arr.shape),dtype=np.float32) # 4D array (time, 3D)
+    #print(FrameArrs.shape)
+
+    for key,value in class_seg.items(): #{'Background': 0, 'liver': 5, 'pancreas': 7, 'esophagus': 15}
+        if key in roi_2_VOI:
+            VOI = roi_2_VOI[key]
+        else :
+            VOI = 'Rest'
+        VOI_index = VOIs_possible.index(VOI)
+        print(key,VOI,VOI_index)
+        
+        ActInterpolate = interp1d(time, TACs[0,:,VOI_index], kind='linear')
+        
+        for i, activity in enumerate(ActInterpolate(pbpk_para["FrameStartTimes"])):
+            print(1)
+            FrameArrs[i][masks[value]] = activity
+
+        #FrameArrs[:, masks[value]] = ActInterpolate(pbpk_para["FrameStartTimes"])
+
+    print("got the TAC correct!!")
+
+    FrameSum = np.sum(FrameArrs, axis=0)
+    
+    '''
     for i in range(ImgAct.shape[0]):
         mask = ImgAct[i] == 0
         ImgAct[i, mask] = ImgAct[i, 2]
         ImgAct[i, 0] = 0
+    '''
+    #turn to act_path
+    
+    print("[PBPK] Creating Activity Bin")
+    
+    """
+    ROICounts = np.zeros(np.size(ImgAct, 1))
+    for i in range(np.size(ImgAct, 1)):
+        ROICounts[i] = np.sum(ROIMap == i)
+    ROICounts[ImgAct[0] == ImgAct[0][2]] = np.sum(ROICounts[ImgAct[0] == ImgAct[0][2]])
+    ROIVolumes = ROICounts * pixel_spacing_x**2 * slice_thickness
 
-    return ImgAct, FrameAct
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ImgAct = np.divide(ImgAct,ROIVolumes[np.newaxis, :])
+    ImgAct[np.isnan(ImgAct)] = 0
+    ImgAct[np.isinf(ImgAct)] = 0
+    """
 
-if __name__ == "__main__":
-    runPBPK()
+    
+    act_path_all = []
+    for i, frame in enumerate(FrameArrs):
+        act_path_single = os.path.join(out_paths['output_PBPK'], f'PBPK_frame_{pbpk_para["FrameStartTimes"][i]}_act_av.bin')
+        act_path_all.append(act_path_single)
+        
+        frame = frame.astype(np.float32)
+        frame.tofile(act_path_single)
+    
+    print(FrameSum,act_path_all)
+
+    return FrameSum, act_path_all

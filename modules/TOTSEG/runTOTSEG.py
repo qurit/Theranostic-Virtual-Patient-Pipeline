@@ -28,21 +28,25 @@ import datetime
 
 
 
-def runTOTSEG(input_path,output_path, output_name, device=None, fast=False, 
-              roi_subset=None, ml=False, statistics=False,
-              radiomics=False 
-):
+def runTOTSEG(input_path,output_path, totseg_para):
     """
     Run TotalSegmentator with common convenience options.
 
     Notes:
       - If you run on CPU, use --fast and/or --roi_subset for big speedups.
     """
-    output_file_name = output_name
-    out_dir = os.path.join(output_path, output_file_name)
+    out_dir = output_path
     os.makedirs(out_dir, exist_ok=True)
+    
+    totseg_name = totseg_para['name']
+    device = totseg_para['device']
+    fast = totseg_para['fast']
+    roi_subset = totseg_para['roi_subset']          
+    ml = totseg_para['ml']
+    statistics = totseg_para['statistics']
+    radiomics = totseg_para['radiomics']
 
-    print("=== TotalSegmentator Run ===")
+    print("[TOTSEG]=== TotalSegmentator Run ===")
     print(f"[TOTSEG] Input:   {input_path}")
     print(f"[TOTSEG] Output:  {out_dir}")
     print(f"[TOTSEG] Device:  {device}")
@@ -60,7 +64,7 @@ def runTOTSEG(input_path,output_path, output_name, device=None, fast=False,
         ml = False
     
     # ---- Guarantee a NIfTI in out_dir (ct_input.nii.gz) ----
-    ct_nifti = os.path.join(out_dir, "ct_input.nii.gz")
+    ct_nifti = os.path.join(out_dir, f"{totseg_name}_ct_input.nii.gz")
 
     if os.path.isdir(input_path):  # DICOM folder
         print("[TOTSEG] DICOM folder -> converting to NIfTI (ct_input.nii.gz)")
@@ -99,7 +103,7 @@ def runTOTSEG(input_path,output_path, output_name, device=None, fast=False,
     # Run TS
     if ml:
         # write a single multilabel NIfTI inside your output folder
-        ml_file = os.path.join(out_dir, f"ml_segmentation.nii.gz") 
+        ml_file = os.path.join(out_dir, f"{totseg_name}_ml_segmentation.nii.gz") 
         totalsegmentator(ct_nifti, ml_file, **kwargs)
         print("[TOTSEG] Segmentation complete (multilabel).")
         print(f"[TOTSEG] Multilabel file: {ml_file}")
@@ -108,34 +112,4 @@ def runTOTSEG(input_path,output_path, output_name, device=None, fast=False,
         totalsegmentator(ct_nifti, out_dir, **kwargs)
         print("[TOTSEG] Segmentation complete.")
 
-
-if __name__ == "__main__":
-    # Comment out if not using Mac :
-    # IMPORTANT on macOS: spawn method prevents re-exec storms
-    try:
-        mp.set_start_method("spawn", force=True)
-    except RuntimeError:
-        pass
-    # end of comment out
-
-    input_path_dataSet_Fereshteh = '/Users/peteryazdi/Desktop/BC_Cancer/TDT/modules/TOTSEG/Scans_Fereshteh/11-37493/11-37493_11-37493_CT_2011-12-15_112426_._CT.WB.50cm_n263__00000/'
-    output_path = "/Users/peteryazdi/Desktop/BC_Cancer/TDT/modules/TOTSEG"
-    roi_subset = ["liver", "pancreas", "esophagus"]  # or None
-    output_file_name = f"{datetime.date.today()}_Segmenation"
-    
-    
-    runTOTSEG(
-        input_path=input_path_dataSet_Fereshteh,
-        output_path=output_path,
-        output_name = output_file_name,
-        device="cpu", 
-        fast=True,
-        roi_subset=roi_subset,          
-        ml=True,                 # single multilabel NIfTI instead of per-class files
-        #statistics=True,         # writes statistics.json
-        #radiomics=True,          # writes statistics_radiomics.json 
-    )
-    
-
-
-    
+ 

@@ -24,6 +24,8 @@ from modules.SIMIND_SPECT.runSIMIND import runSIMIND
 
 from modules.PBPK.runPBPK import runPBPK
 
+from modules.RECON.runRECON import runRECON
+
 
 #Comment out if not using Mac :
 # -------------------- Environment & worker limits (set BEFORE heavy imports) --------------------
@@ -41,7 +43,6 @@ os.environ.setdefault("MONAI_NUM_WORKERS", "0")
 
 # Allow Torch to fall back gracefully when MPS ops are missing
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-
 # -------------------- End of comment--------------------
 
 def setup():
@@ -75,29 +76,35 @@ def setup():
     totseg_para = {}
     for key, name in totseg_names.items():
         totseg_para[key] = name
-        
-    # --- Create subfolders from SIMIND parameters ---
-    simind_names = config.get("SIMIND", {})
-    simind_para = {}
-    for key, name in simind_names.items():
-        simind_para[key] = name
     
     # --- Create subfolders from PBPK parameters ---
     pbpk_names = config.get("PBPK", {})
     pbpk_para = {}
     for key, name in pbpk_names.items():
         pbpk_para[key] = name
-
-
         
-    return path,config,out_paths,input_paths,totseg_para,simind_para,pbpk_para
+    # --- Create subfolders from SIMIND parameters ---
+    simind_names = config.get("SIMIND", {})
+    simind_para = {}
+    for key, name in simind_names.items():
+        simind_para[key] = name
+        
+    # --- Create subfolders from RECON parameters ---
+    recon_names = config.get("RECON", {})
+    recon_para = {}
+    for key, name in recon_names.items():
+        recon_para[key] = name
+    
 
+    return path,config,out_paths,input_paths,totseg_para,pbpk_para,simind_para,recon_para
 
-path, config, out_paths, input_paths, totseg_para , simind_para, pbpk_para = setup()
+path, config, out_paths, input_paths, totseg_para , pbpk_para, simind_para, recon_para = setup()
 
 def simulate():
 
     #####TOTAL SEGMENENTATION#####
+    
+    
     # Comment out if not using Mac :
     # IMPORTANT on macOS: spawn method prevents re-exec storms
     try:
@@ -105,49 +112,52 @@ def simulate():
     except RuntimeError:
         pass
     # end of comment out
-    output_file_name_totseg = f"{datetime.date.today()}_Segmenation"
     
-    """
-    runTOTSEG(
-    input_path=input_paths['ct_input_dicom'],
-    output_path=out_paths['output_total_seg'],
-    output_name = output_file_name_totseg,
-    device=totseg_para['device'], 
-    fast=totseg_para['fast'],
-    roi_subset=totseg_para['roi_subset'],          
-    ml=totseg_para['ml'],                 
-    statistics=totseg_para['statistics'],         
-    radiomics=totseg_para['radiomics'],          
-    )
-    """
+    print("[MAIN] Beginning TDT Program")
+    print(f"[MAIN] Input file:{input_paths['ct_input_dicom']}")
     
-    print(f"[MAIN] Segemenation Complete, ct input and segmentated output can be found:\n[MAIN]{out_paths['output_total_seg']}/{output_file_name_totseg}")
+    print(f"[MAIN] Beginning Segmentation using Total Segmentator")
+    """
+    runTOTSEG(input_paths['ct_input_dicom'],out_paths['output_total_seg'], totseg_para)
+    """
+    print(f"[MAIN] Segemenation Complete, ct input and segmentated output can be found:\n[MAIN]{out_paths['output_total_seg']}")
+    
     
     #####NII PROCCESSING#####
+    #had to resize to reduce time for the runPBPK to work 
+    #(need to end up using full resolution at the end, for now this will work)
+    
+    resize_tuple=(128,128,128)
+    print(f"[MAIN] Beginning Niifty file processing")
+    print(f"[MAIN] Will need to resize ct arrays to {resize_tuple} for efficiancy")
+    
     ts_classes = ts_cl.class_map["total"]
-    ct_input_arr,segmentated_ml_output_arr, class_seg, masks, atn_path, pixel_spacing_x,slice_thickness = NII_PROCCESSING(out_paths['output_total_seg'],output_file_name_totseg,ts_classes)
+    ct_input_arr,segmentated_ml_output_arr, ct_input_arr_resize, segmentated_ml_output_arr_resize, class_seg, masks, atn_path, pixel_spacing,slice_thickness = NII_PROCCESSING(out_paths['output_total_seg'],ts_classes,resize_tuple,simind_para,totseg_para)
     print(f"[MAIN] CT seg. processed, atten bin can be found:\n[MAIN] {atn_path}")
 
     ##### PBPK #####
-    FrameAct,act_path = runPBPK(out_paths,pbpk_para,totseg_para,ct_input_arr,pixel_spacing_x,slice_thickness,segmentated_ml_output_arr,masks,class_seg)
-    print(f"[MAIN] PBPK TAC created, activity bin can be found:\n[MAIN] {act_path}")
-    quit()
-
+    FrameAct,act_path_all = runPBPK(out_paths,pbpk_para,totseg_para,ct_input_arr_resize,
+                                    pixel_spacing,slice_thickness,resize_tuple,
+                                    segmentated_ml_output_arr_resize,masks,class_seg)
+    print(f"[MAIN] PBPK TAC created, activity bin can be found:\n[MAIN] {act_path_all}")
+    
     ######SIMIND########
+    runSIMIND(path, simind_para, pbpk_para, out_paths['output_SIMIND'],os.cpu_count(), 
+              np.shape(ct_input_arr_resize)[0], 
+              np.shape(segmentated_ml_output_arr_resize)[2],
+              FrameAct, pixel_spacing, slice_thickness, 
+              act_path_all, atn_path)
+    
+    print(f"[MAIN] SIMIND process finished, beginning RECON using PyTomography")
+    
+    ######RECON########
+    runRECON(recon_para,pbpk_para,simind_para,out_paths,FrameAct)
+    
+    print(f"[MAIN] RECON process finished")
+    
+    return 0
 
-    runSIMIND(path=path, simind_para = simind_para, pbpk_para=pbpk_para,
-              output_path=out_paths['output_SIMIND'],num_cores=1, 
-              InputImageSize=np.shape(ct_input_arr)[0], 
-              ImgLength=np.shape(segmentated_ml_output_arr)[2],
-              ImgSum=FrameAct, 
-              pixel_spacing_x=pixel_spacing_x, 
-              slice_thickness=slice_thickness, act_path=act_path, 
-              atn_path=atn_path)
-    
 
-    
-    
-    return
 
 if __name__ == "__main__":
     simulate()

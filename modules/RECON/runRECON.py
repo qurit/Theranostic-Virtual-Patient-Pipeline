@@ -8,24 +8,30 @@ from pytomography.likelihoods import PoissonLogLikelihood
 import SimpleITK as sitk
 
 
-def runRECON(config, output_name, output_path, FrameAct):
+def runRECON(recon_para,pbpk_para,simind_para,out_paths, FrameAct):
+    print(f"[RECON] Beginning Recon stage")
+    
+    output_name_simind = simind_para['name']
+    output_name_recon = recon_para['name']
+    output_path_simind = out_paths['output_SIMIND']
+    output_path_recon = out_paths['output_PyTomography']
+    
+    Iterations = recon_para["Iterations"]
+    Subsets = recon_para["Subsets"]
+    OutputPixelSize = simind_para["OutputPixelSize"]
+    OutputSliceWidth = simind_para["OutputSliceWidth"]
+    FrameDurations = pbpk_para["FrameDurations"][0]
 
-    Iterations = config["Recon"]["Iterations"]
-    Subsets = config["Recon"]["Subsets"]
-    OutputPixelSize = config["SIMIND"]["OutputPixelSize"]
-    OutputSliceWidth = config["SIMIND"]["OutputSliceWidth"]
-    FrameDurations = config["PBPK"]["FrameDurations"]
-
-    CalibrationFile = os.path.join(output_path, 'calib.res')
+    CalibrationFile = os.path.join(output_path_simind, 'calib.res')
     with open(CalibrationFile, 'r') as file:
         Sensitivity = float(file.readlines()[70].split(' ')[3])
 
-    for i in range(len(config["PBPK"]["FrameStartTimes"])):
+    for i in range(len(pbpk_para["FrameStartTimes"])):
         print(f'Reconstructing frame {i}...')
 
-        photopeak_path = os.path.join(output_path, f'{output_name}_frame{i}_tot_w2.h00')
-        lower_path = os.path.join(output_path, f'{output_name}_frame{i}_tot_w1.h00')
-        upper_path = os.path.join(output_path, f'{output_name}_frame{i}_tot_w3.h00')
+        photopeak_path = os.path.join(output_path_simind, f'{output_name_simind}_frame{i}_tot_w2.h00')
+        lower_path = os.path.join(output_path_simind, f'{output_name_simind}_frame{i}_tot_w1.h00')
+        upper_path = os.path.join(output_path_simind, f'{output_name_simind}_frame{i}_tot_w3.h00')
 
         object_meta, proj_meta = simind.get_metadata(photopeak_path)
 
@@ -33,14 +39,14 @@ def runRECON(config, output_name, output_path, FrameAct):
         lower = simind.get_projections(lower_path)
         upper = simind.get_projections(upper_path)
 
-        photopeak_realization = torch.poisson(photopeak * FrameAct[i] * FrameDurations[i])
-        lower_realization = torch.poisson(lower * FrameAct[i] * FrameDurations[i])
-        upper_realization = torch.poisson(upper * FrameAct[i] * FrameDurations[i])
+        photopeak_realization = torch.poisson(photopeak * FrameAct[i] * FrameDurations)
+        lower_realization = torch.poisson(lower * FrameAct[i] * FrameDurations)
+        upper_realization = torch.poisson(upper * FrameAct[i] * FrameDurations)
 
         ww_peak, ww_lower, ww_upper = [simind.get_energy_window_width(path) for path in [photopeak_path, lower_path, upper_path]]
         scatter_estimate_TEW = simind.compute_EW_scatter(lower_realization, upper_realization , ww_lower, ww_upper, ww_peak)
 
-        path_amap = os.path.join(output_path, f'{output_name}_frame0.hct')
+        path_amap = os.path.join(output_path_simind, f'{output_name_simind}_frame0.hct')
         amap = simind.get_attenuation_map(path_amap)
         att_transform = SPECTAttenuationTransform(amap)
 
@@ -67,12 +73,12 @@ def runRECON(config, output_name, output_path, FrameAct):
         n_subsets=Subsets,
         )
 
-        recon_img = sitk.GetImageFromArray(reconstructed_image.cpu().T/Sensitivity/FrameDurations[i]/OutputPixelSize**2/OutputSliceWidth)
+        recon_img = sitk.GetImageFromArray(reconstructed_image.cpu().T/Sensitivity/FrameDurations/OutputPixelSize**2/OutputSliceWidth)
         recon_img.SetSpacing((OutputPixelSize,OutputPixelSize,OutputSliceWidth))
-        sitk.WriteImage(recon_img, os.path.join(output_path, f'recon_frame{i}.nii'), imageIO='NiftiImageIO')
+        sitk.WriteImage(recon_img, os.path.join(output_path_recon, f'{output_name_recon}_frame{i}.nii'), imageIO='NiftiImageIO')
 
     atn_img = sitk.GetImageFromArray(amap.cpu().T)
     atn_img.SetSpacing((OutputPixelSize,OutputPixelSize,OutputSliceWidth))
-    sitk.WriteImage(atn_img, os.path.join(output_path, f'atn_img.nii'), imageIO='NiftiImageIO')
+    sitk.WriteImage(atn_img, os.path.join(output_path_recon, f'{output_name_recon}_atn_img.nii'), imageIO='NiftiImageIO')
 
     return None

@@ -1,0 +1,11 @@
+ ObjectType = Image
+ BinaryData = True
+ BinaryDataByteOrderMSB = False
+ CompressedData = False
+ Offset = 0 0 0
+ CenterOfRotation = 0 0 0
+ AnatomicalOrientation = RAI
+ NDims = 2
+ DimSize =   128  128
+ ElementType = MET_FLOAT
+ ElementDataFile = calib_tot_w1.a00

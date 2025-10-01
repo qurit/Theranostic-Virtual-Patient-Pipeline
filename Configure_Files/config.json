@@ -1,42 +1,47 @@
 {
     "OutputNames": {//output file names
-        "output_total_seg": "TotalSegmentator_Outputs",
+        "output_total_seg": "TOTSEG_Outputs",
         "output_PBPK": "PBPK_Outputs",
         "output_SIMIND": "SIMIND_Outputs",
-        "output_GATE": "GATE_Outputs",
-        "output_PyTomography": "PyTomography_Outputs"
+        "output_PyTomography": "RECON_Outputs"
     },
     "InputPaths":{
         "ct_input_dicom" : "/Users/peteryazdi/Desktop/BC_Cancer/TDT/input/Scans_Fereshteh/11-37493/11-37493_11-37493_CT_2011-12-15_112426_._CT.WB.50cm_n263__00000/"
     }, 
     "TotalSegmentator": {
+        "name" : "TOTSEG",
         "device":"cpu", 
         "fast":true,
-        "roi_subset":["liver", "pancreas", "esophagus"],          
+        "roi_subset":["liver", "heart", "brain"],          
         "ml":true,                 // single multilabel NIfTI instead of per-class files
         "statistics":false,         // writes statistics.json
         "radiomics":false          // writes statistics_radiomics.json 
     },
     "PBPK": {
+        "name" : "PBPK",
         "HotTotalAmount": 7.5,  // Total amount of hot tracer [nmol]
         "ColdTotalAmount": 90,  // Total amount of cold tracer [nmol]
         "LambdaPhys": 7.15e-05, // Physical decay constant [1/min]
         "StopTime": 500,    // To be removed
-        "FrameStartTimes": [100, 200, 300],   // Start time of each frame [min]
+        "FrameStartTimes": [100,200,300],   // Start time of each frame [min]
         "FrameDurations": [10] // Duration of each frame [seconds] - accounted for in SIMIND?????
     },
     "SIMIND": {
+        "name" : "SIMIND", 
         "SIMINDDirectory": "/Users/peteryazdi/Desktop/BC_Cancer/TDT/modules/SIMIND_SPECT/simind",    // Path to SIMIND executable
         "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
         "Isotope": "lu177",    // Isotope type - refer to SIMIND documentation
         "NumProjections": 10,   // Number of projections
-        "NumPhotons": 1e5,    // Number of photons
+        "NumPhotons": 1e6,    // Number of photons
         "DetectorDistance": 10, // Detector distance [cm]
-        "OutputImgSize": 64,   // Output image dimensions
+        "OutputImgSize": 128,   // Output image dimensions
         "OutputPixelSize": 0.5, // Output pixel size [cm]
-        "OutputSliceWidth": 0.5 // Output slice width [cm]
+        "OutputSliceWidth": 0.5, // Output slice width [cm]
+        "Index_32": 0 // 0:(Y, Z, X), 1:(X, Y, Z),2:(X, Z, Y)
+
     },
-    "Recon": {
+    "RECON": {
+        "name" : "RECON",
         "Iterations": 4,    // Number of iterations used in reconstruction
         "Subsets": 8    // Number of subsets used in reconstruction
     }

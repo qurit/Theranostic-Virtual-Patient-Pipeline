@@ -139,21 +139,21 @@ def simulate():
     ##### PBPK #####
     log.info("Beginning PBPK modelling")
     print("[MAIN] Beginning PBPK modelling...")
-    FrameAct,act_path_all = runPBPK(out_paths,pbpk_para,segmentated_ml_output_arr,masks,class_seg)
+    ActivityMapSum,act_path_all = runPBPK(out_paths,pbpk_para,segmentated_ml_output_arr,masks,class_seg)
     log.debug(f"PBPK TAC created, activity bin can be found: {act_path_all}")
     
     ######SIMIND########
     log.info("Beginning SIMIND simulation")
     print("[MAIN] Beginning SIMIND simulation...")
     runSIMIND(path, simind_para, pbpk_para, out_paths['output_SIMIND'],os.cpu_count(), 
-              segmentated_ml_output_arr, FrameAct, pixel_spacing, slice_thickness, 
+              segmentated_ml_output_arr, ActivityMapSum, pixel_spacing, slice_thickness, 
               act_path_all, atn_path)
     
     
     ######RECON########
     log.info("Beginning RECON using PyTomography")
     print("[MAIN] Beginning RECON using PyTomography...")
-    runRECON(recon_para,pbpk_para,simind_para,out_paths,FrameAct)
+    runRECON(recon_para,pbpk_para,simind_para,out_paths,ActivityMapSum)
     
     log.info("TDT Framework finished")
     print("[MAIN] TDT Framework finished")

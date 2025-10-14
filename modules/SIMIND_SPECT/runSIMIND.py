@@ -2,7 +2,7 @@ import os, subprocess, shutil
 import numpy as np
 import logging as log
 
-def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, segmentated_ml_output_arr, FrameAct,pixel_spacing_x, slice_thickness,act_path_all,atn_path):
+def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, segmentated_ml_output_arr, ActivityMapSum,pixel_spacing_x, slice_thickness,act_path_all,atn_path):
     output_name = simind_para['name']
     os.environ['SMC_DIR'] = os.path.join(simind_para["SIMINDDirectory"], 'smc_dir/')
     os.environ['PATH'] = simind_para["SIMINDDirectory"] + ':' + os.environ.get('PATH', '') 
@@ -53,7 +53,7 @@ def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, segmentated_m
 
     for index,value in enumerate((pbpk_para["FrameStartTimes"])):
 
-        ScaleFactor = NumPhotons/FrameAct[index]   # took out dividing num of cores since dont need unless  launching that many separate SIMIND runs in parallel
+        ScaleFactor = NumPhotons/ActivityMapSum[index]   # took out dividing num of cores since dont need unless  launching that many separate SIMIND runs in parallel
         nn  = max(1, int(np.ceil(ScaleFactor)))      # nn must be an integer ≥ 1
         log.debug(f"ScaleFactor : {ScaleFactor}")
         

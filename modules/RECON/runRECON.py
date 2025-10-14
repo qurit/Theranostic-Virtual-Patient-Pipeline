@@ -9,7 +9,7 @@ import SimpleITK as sitk
 import logging as log
 
 
-def runRECON(recon_para,pbpk_para,simind_para,out_paths, FrameAct):
+def runRECON(recon_para,pbpk_para,simind_para,out_paths, ActivityMapSum):
     output_name_simind = simind_para['name']
     output_name_recon = recon_para['name']
     output_path_simind = out_paths['output_SIMIND']
@@ -39,9 +39,9 @@ def runRECON(recon_para,pbpk_para,simind_para,out_paths, FrameAct):
         lower = simind.get_projections(lower_path)
         upper = simind.get_projections(upper_path)
 
-        photopeak_realization = torch.poisson(photopeak * FrameAct[i] * FrameDurations)
-        lower_realization = torch.poisson(lower * FrameAct[i] * FrameDurations)
-        upper_realization = torch.poisson(upper * FrameAct[i] * FrameDurations)
+        photopeak_realization = torch.poisson(photopeak * ActivityMapSum[i] * FrameDurations)
+        lower_realization = torch.poisson(lower * ActivityMapSum[i] * FrameDurations)
+        upper_realization = torch.poisson(upper * ActivityMapSum[i] * FrameDurations)
 
         ww_peak, ww_lower, ww_upper = [simind.get_energy_window_width(path) for path in [photopeak_path, lower_path, upper_path]]
         scatter_estimate_TEW = simind.compute_EW_scatter(lower_realization, upper_realization , ww_lower, ww_upper, ww_peak)

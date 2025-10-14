@@ -6,11 +6,10 @@ from pytomography.transforms.SPECT import SPECTAttenuationTransform, SPECTPSFTra
 from pytomography.algorithms import OSEM
 from pytomography.likelihoods import PoissonLogLikelihood
 import SimpleITK as sitk
+import logging as log
 
 
 def runRECON(recon_para,pbpk_para,simind_para,out_paths, FrameAct):
-    print(f"[RECON] Beginning Recon stage")
-    
     output_name_simind = simind_para['name']
     output_name_recon = recon_para['name']
     output_path_simind = out_paths['output_SIMIND']
@@ -27,7 +26,8 @@ def runRECON(recon_para,pbpk_para,simind_para,out_paths, FrameAct):
         Sensitivity = float(file.readlines()[70].split(' ')[3])
 
     for i in range(len(pbpk_para["FrameStartTimes"])):
-        print(f'Reconstructing frame {i}...')
+        log.info(f"Reconstructing frame {i}")
+        print(f'[RECON] Reconstructing frame {i}...')
 
         photopeak_path = os.path.join(output_path_simind, f'{output_name_simind}_frame{i}_tot_w2.h00')
         lower_path = os.path.join(output_path_simind, f'{output_name_simind}_frame{i}_tot_w1.h00')

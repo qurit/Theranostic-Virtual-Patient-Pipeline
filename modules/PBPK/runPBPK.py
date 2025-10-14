@@ -1,14 +1,11 @@
 import numpy as np
-from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
-import pycno
-import os
-from skimage.transform import resize
+import pycno, os
+import logging as log
 
-def runPBPK(out_paths, pbpk_para, totseg_para, ct_input_arr, pixel_spacing_x,slice_thickness,resize_tuple,segmentated_ml_output_arr_resize,masks,class_seg):
+def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg):
     pbpk_name = pbpk_para['name']
     
-    print("[PBPK] Beginning creating Time Activity Curves")
     VOIs_possible = ['Tumor1', 'Tumor2', 'Kidney', 'Heart', 'SG', 'Bone', 'TumorRest', 'Spleen', 'Liver', 'Prostate', 'GI', 'Rest', 'Skin', 'Muscle', 'Brain', 'RedMarrow', 'Lungs', 'Adipose']
     roi_2_VOI = {
 #        "NA":'Tumor1', 
@@ -32,44 +29,44 @@ def runPBPK(out_paths, pbpk_para, totseg_para, ct_input_arr, pixel_spacing_x,sli
         #'Adipose'
         }
 
-    time, TACs = pycno.run_model(model_name="PSMA", stop=pbpk_para['StopTime'])
-    
-    print("[PBPK] TAC created!")
+    time, TACs = pycno.run_model(model_name="PSMA", stop=pbpk_para['StopTime']) #TAC shape (1, 100, 18) (patient, time step, VOIs)
+    log.debug("TAC created successfully")
 
     del class_seg['Background']
- 
 
-    for key,value in masks.items():
-        value_resize = resize(value, resize_tuple)
-        masks[key] = value_resize.astype(bool)
-        
-    #for now have all ones, need to turn back to zeros once know inside and outside body
-    FrameArrs = np.ones((len(pbpk_para["FrameStartTimes"]),*segmentated_ml_output_arr_resize.shape),dtype=np.float32) # 4D array (time, 3D)
+    ActivityMap = np.zeros((len(pbpk_para["FrameStartTimes"]),*segmentated_ml_output_arr.shape),dtype=np.float32) # 4D array (time, 3D)
 
-    for key,value in class_seg.items(): #{'Background': 0, 'liver': 5, 'pancreas': 7, 'esophagus': 15}
+    for key,value in class_seg.items(): # populate ActivityMap 
         if key in roi_2_VOI:
             VOI = roi_2_VOI[key]
         else :
             VOI = 'Rest'
         VOI_index = VOIs_possible.index(VOI)
-        print(key,VOI,VOI_index, key, value)
         
-        ActInterpolate = interp1d(time, TACs[0,:,VOI_index], kind='linear')
-        for i, activity in enumerate(ActInterpolate(pbpk_para["FrameStartTimes"])):
-            FrameArrs[i][masks[value]] = activity
+        plt.plot(time,TACs[0,:,VOI_index],label = VOI)
 
-    print("got the TAC correct!!")
-    FrameAct = np.sum(FrameArrs, axis=(1,2,3))
+        
+        TAC_VOI = TACs[0, :, VOI_index]                           # 1-D vector of the TAC for that VOI across the model grid, length 100
+        frame_start = np.asarray(pbpk_para["FrameStartTimes"], float)  # 1-D vector of your frame start times length 3
+        TAC_VOI_interp_time  = np.interp(frame_start, time, TAC_VOI)                         #  1-D vector of interpolated activities at each frame time
+        ActivityMap[:, masks[value]] = TAC_VOI_interp_time[:, None]
+    
+    log.info("Created Activity map using TACs and Segmentated Mask")
+    print("Created Activity map using TACs and Segmentated Mask")
+    
+    
+    ActivityMapSum = np.sum(ActivityMap, axis=(1,2,3))
+    
+    log.debug(f"Activity Map Shape: {ActivityMap.shape}")
+    log.debug(f"Activity Map Sum: {ActivityMapSum}")
+    
 
-    #turn to act_path
-    print("[PBPK] Creating Activity Bin")
     act_path_all = []
-    for i, frame in enumerate(FrameArrs):
+    for i, frame in enumerate(ActivityMap):
         act_path_single = os.path.join(out_paths['output_PBPK'], f'{pbpk_name}_{pbpk_para["FrameStartTimes"][i]}_act_av.bin')
         act_path_all.append(act_path_single)
         frame = frame.astype(np.float32)
         frame.tofile(act_path_single)
-    
-    print(FrameAct,act_path_all)
 
-    return FrameAct, act_path_all
+
+    return ActivityMapSum, act_path_all

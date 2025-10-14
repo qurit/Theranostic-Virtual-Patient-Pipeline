@@ -1,28 +1,27 @@
-import os
-import subprocess
-import shutil
+import os, subprocess, shutil
 import numpy as np
+import logging as log
 
-def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, InputImageSize, ImgLength, ImgSum,pixel_spacing_x, slice_thickness,act_path_all,atn_path,index_14=-7,index_15=-7):
-    print("[SIMIND] Beginning SIMIND Simulation")
+def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, segmentated_ml_output_arr, FrameAct,pixel_spacing_x, slice_thickness,act_path_all,atn_path):
     output_name = simind_para['name']
     os.environ['SMC_DIR'] = os.path.join(simind_para["SIMINDDirectory"], 'smc_dir/')
     os.environ['PATH'] = simind_para["SIMINDDirectory"] + ':' + os.environ.get('PATH', '') 
-    InputImgSize = InputImageSize
+    
     Collimator = simind_para["Collimator"]
     Isotope = simind_para["Isotope"]
     NumProjections = simind_para["NumProjections"]
     DetectorDistance = simind_para["DetectorDistance"]
     OutputImgSize = simind_para["OutputImgSize"]
-    PixelWidth = pixel_spacing_x
-    SliceWidth = slice_thickness
     OutputPixelSize = simind_para["OutputPixelSize"]
     OutputSliceWidth = simind_para["OutputSliceWidth"]
-    OutputImgLength = SliceWidth*ImgLength/OutputSliceWidth 
     NumPhotons = simind_para["NumPhotons"]
     index_32 = simind_para["Index_32"]
     
-    print("[SIMIND] Inital Parameters Stored")
+    PixelWidth = pixel_spacing_x
+    SliceWidth = slice_thickness
+    index_14=-7
+    index_15=-7
+    
     
     ScatwinFile = os.path.join(path, 'bin/scattwin.win')
     ScatwinFileOut = os.path.join(output_path, f'{output_name}.win')
@@ -32,45 +31,61 @@ def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, InputImageSiz
     SmcFileOut = os.path.join(output_path, f'{output_name}.smc')
     shutil.copyfile(SmcFile, SmcFileOut)
     
-    print("[SIMIND] Scat and Smc files stored")
+    log.info("Scat and Smc files stored")
+    log.info("[SIMIND] Scat and Smc files stored")
 
-    HalfLength = SliceWidth*ImgLength/2
+    shape = segmentated_ml_output_arr.shape
+
+    if index_32 == 0:      # (Y, Z, X)
+        Y, Z, X = shape
+        inX, inY, nImages = Z, Y, X   # /78, /79, /34
+    elif index_32 == 1:    # (X, Y, Z)
+        X, Y, Z = shape
+        inX, inY, nImages = X, Y, Z
+    elif index_32 == 2:    # (X, Z, Y)
+        X, Z, Y = shape
+        inX, inY, nImages = Z, X, Y
+
+
+    HalfLength = SliceWidth * nImages / 2.0
+    OutputImgLength = SliceWidth * nImages / OutputSliceWidth
+    
 
     for index,value in enumerate((pbpk_para["FrameStartTimes"])):
 
-        ScaleFactor = NumPhotons/ImgSum[index]/num_cores
-
+        ScaleFactor = NumPhotons/FrameAct[index]   # took out dividing num of cores since dont need unless  launching that many separate SIMIND runs in parallel
+        nn  = max(1, int(np.ceil(ScaleFactor)))      # nn must be an integer ≥ 1
+        log.debug(f"ScaleFactor : {ScaleFactor}")
+        
         simind_exe = os.path.join(simind_para["SIMINDDirectory"], 'simind')
         
-        atn_name = os.path.basename(atn_path)                    # e.g., "test_atn_av.bin"
+        atn_name = os.path.basename(atn_path)                    # e.g., "TOTSEG_atn_av.bin"
         act_name = os.path.basename(act_path_all[index])         # e.g., "PBPK_frame_100_act_av.bin"
 
         shutil.copyfile(atn_path, os.path.join(output_path, atn_name))
         shutil.copyfile(act_path_all[index], os.path.join(output_path, act_name))
         
-        print(f"[SIMIND] saved in SIMIND dir, inputed atn file :{atn_name}")
-        print(f"[SIMIND] saved in SIMIND dir, inputed act file :{act_name}")
         simind_switches = (
-            f'/fd:{atn_name}'              
-            f'/fs:{act_name}'              
-            f'/14:{index_14}'             # -7
-            f'/15:{index_15}'             # -7
-            f'/cc:{Collimator}'
-            f'/fi:{Isotope}'
-            f'/nn:{ScaleFactor}'
-            f'/in:x22,6x'               
-            f'/02:{HalfLength}'
-            f'/05:{HalfLength}'
-            f'/12:{DetectorDistance}'
-            f'/28:{OutputPixelSize}'
-            f'/29:{NumProjections}'
-            f'/31:{PixelWidth}'
-            f'/32:{index_32}'
-            f'/34:{ImgLength}'
-            f'/76:{OutputImgSize}'
-            f'/77:{OutputImgLength}'
-            f'/78:{InputImgSize}'
-            f'/79:{InputImgSize}'
+            f'/fd:{atn_name}'             # "TOTSEG_atn_av.bin"
+            f'/fs:{act_name}'             # PBPK_frame_100_act_av.bin
+            f'/14:{index_14}'             # set in config
+            f'/15:{index_15}'             # set in config
+            f'/cc:{Collimator}'           # set in config
+            f'/fi:{Isotope}'              # set in config
+            f'/nn:{nn}'                    # NumPhotons {set in config} /ImgSum[index] {np.sum(FrameArrs, axis=(1,2,3)[index])}
+            f'/in:x22,3x'               
+            f'/02:{HalfLength}'           # SliceWidth*ImgLength/2
+            f'/05:{HalfLength}'           # SliceWidth*ImgLength/2
+            f'/12:{DetectorDistance}'     # set in config
+            f'/28:{OutputPixelSize}'      # set in config
+            f'/29:{NumProjections}'       # set in config
+            f'/31:{PixelWidth}'           # ct_input.header.get_zooms()[0] *0.1 (cm)
+            f'/32:{index_32}'             # set in config
+            f'/34:{nImages}'              # 512
+            f'/76:{OutputImgSize}'        # set in config
+            f'/77:{OutputImgLength}'      # SliceWidth*nImages/OutputSliceWidth 
+            f'/78:{inX}'                  # 512
+            f'/79:{inY}'                  # 263
         )
 
         processes = []
@@ -124,5 +139,5 @@ def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, InputImageSiz
 
     calibration_command = f'{simind_exe} jaszak calib/fi:{Isotope}/cc:{Collimator}/29:1/15:5/fa:11/fa:15/fa:14'
     subprocess.run(calibration_command, shell=True, cwd=output_path, stdout=subprocess.DEVNULL)
-    print("[SIMIND] Files Saved")
-    return
+    
+    return 0 

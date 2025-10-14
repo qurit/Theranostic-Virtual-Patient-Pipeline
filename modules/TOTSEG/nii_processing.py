@@ -1,80 +1,10 @@
 import nibabel as nib
-from nibabel.affines import apply_affine
 import numpy as np
-
-
 import matplotlib.pyplot as plt
 from scipy.ndimage import median_filter
 import os
-from skimage.transform import resize
-from scipy.ndimage import zoom
+import logging as log
 
-
-
-
-def sform_info(nii_header):
-    """
-    The different sform code values specify which RAS+
-    space the sform affine refers to, with these interpretations:
-    
-    
-    will return:
-    nii_header.get_sform() : Affine Matrix 
-    
-    nii_header['sform_code']: int [0,4]
-    0->unknown sform not defined
-    1->scanner RAS+ in scanner coordinates
-    2->aligned RAS+ aligned to some other scan
-    3->talairach RAS+ in Talairach atlas space
-    4->mni RAS+ in MNI atlas space
-    """
-    #sform
-    print("[NII_PROCCESSING] Loading SFORM data")
-    #print(nii_header.get_sform())
-    print(f"[NII_PROCCESSING] Sform code: {nii_header['sform_code']}")
-    return[nii_header.get_sform(),
-           nii_header['sform_code']]
-
-def slice_shower(nii_arr):
-    """
-    Make sure to know which axis slicing through! 
-    Can also change range as if take full range of shape
-    will be alot of plots to exit through
-    """
-    print("[NII_PROCCESSING] Creating Slice of plot")
-    #show slices:
-    for i in range(nii_arr.shape[2]):
-        plt.imshow(nii_arr[:,:,i],cmap='gray')
-        plt.show()
-
-def voxelCoord_2_scannerCoord(nii_affine, voxelCoord):
-    '''   
-    affine array stores the relationship between 
-    voxel coordinates in the image data array and 
-    coordinates in the reference space
-    
-    “scanner RAS” (right, anterior, superior)
-    
-    how coord work:
-    voxel coord: (i,j,k)
-    reference space coordinate(scanner): (x,y,z)
-    [x,y,z].T = f((i,j,k))
-    [x,y,z].T = M[i,j,k].T + [a,b,c].T
-    where M is a transformation matrix, [abc].T is a translation matrix
-    note will get last row [0,0,0,1] due to we have rephrased the combination
-    of rotations/zooms and translations as a transformation in homogeneous coordinates
-    
-    need Affine Matrix and Voxel Coord (i,j,k) -> Scanner Coord (x,y,z)
-    '''
-    
-    print(f"[NII_PROCCESSING] Affine Matrix:\n{nii_affine}")
-    M = nii_affine[:3, :3]
-    abc = nii_affine[:3, 3] 
-    print(f"[NII_PROCCESSING] Rotational Matrix:\n{M}")
-    print(f"[NII_PROCCESSING] Translational Vector:\n{abc}")
-    print(f"[NII_PROCCESSING] Voxel Coord inputted: {voxelCoord}")
-    print(f"[NII_PROCCESSING] Scanner Coord: {M.dot(voxelCoord) + abc}")
-    return M.dot(voxelCoord) + abc
 
 def segmentation_2_class(nii_arr,classes,roi_subset):
     """
@@ -85,9 +15,8 @@ def segmentation_2_class(nii_arr,classes,roi_subset):
     ie {'Background': 0, 'liver': 5, 'pancreas': 7, 'esophagus': 15}
     
     """
-    #for segmentation linking to classes
-    print(f"[NII_PROCCESSING] Roi Subset: {roi_subset}")
-    print(f"[NII_PROCCESSING] Unique Segmentation Values: {np.unique(nii_arr)}")
+    log.debug(f"Running segmentation_2_class, ROI subset: {roi_subset}")
+    log.debug(f"Unique Segmentation Values: {np.unique(nii_arr)}")
 
     class_seg = {}
     for n in np.unique(nii_arr):
@@ -95,7 +24,6 @@ def segmentation_2_class(nii_arr,classes,roi_subset):
             class_seg["Background"] = 0
         else:
             name = classes.get(n)
-            #print (name)
             class_seg[name] = int(n)
     return class_seg
 
@@ -105,10 +33,8 @@ def segmentation_multiple_arrays(seg_arr):
 
     seg_arr            : 3D segmentation array (can be float or int).
 
-    Returns: dict {int(label) : mask_array}, where mask_array has same shape as seg_arr.
+    Returns: dict {bool : mask_array}, where mask_array has same shape as seg_arr.
     """
-    
-    print("[NII_PROCCESSING] Creating unique arrays for each segmentated organ")
     arr = seg_arr
     labels = np.unique(arr)
     
@@ -117,11 +43,11 @@ def segmentation_multiple_arrays(seg_arr):
     masks = {}
     for lab in labels:
         m = (arr == lab)
-        masks[int(lab)] = m.astype(int)
+        masks[int(lab)] = m
 
     return masks
 
-def hu_to_rho(nii_arr):
+def hu_to_rho(nii_arr): # not used
     """
     note that the nii.arrays have indicies referring to coord. 
     CT Hounsfield unit (HU) values quantify X-ray attenuation (density) 
@@ -258,7 +184,7 @@ def hu_to_rho(nii_arr):
 
     return rho
 
-def save_simind_density_bin_from_hu(hu_arr,out_dir,filename="d1000.dmi"):
+def save_simind_density_bin_from_hu(hu_arr,out_dir,filename="d1000.dmi"): #not used
     """
     Convert HU -> density (g/cc) ( assume in XYZ order)
     then write a SIMIND voxel-based phantom file with 
@@ -293,11 +219,14 @@ def hu_to_mu(CT,pixel_size, mu_water=0.1537,mu_bone=0.2234):
         pixel_size (float) : pixel size set in cm (cm/pixel)
         
     Return:
-    mu_map: tensor of the CT in linear attentuion coefficant [1/pixel]
+    mu_map: tensor of the CT in linear attentuion coefficant 
 =
     """
-    mu_water_pixel = mu_water*pixel_size
-    mu_bone_pixel = mu_bone*pixel_size
+    mu_water_pixel = mu_water*pixel_size #pixel/cm
+    mu_bone_pixel = mu_bone*pixel_size #pixel cm
+    
+    log.debug(f"Attenuation of Water : {mu_water_pixel} pixel/cm")
+    log.debug(f"Attenuation of Bone : {mu_bone_pixel} pixel/cm")
     
     mu_map = np.zeros_like(CT, dtype=np.float32)
 
@@ -309,7 +238,7 @@ def hu_to_mu(CT,pixel_size, mu_water=0.1537,mu_bone=0.2234):
  
     return mu_map
 
-def save_simind_mu_from_hu(hu_arr,out_dir,pixel_size,filename="for_simind_atn_av.bin"):
+def save_simind_mu_from_hu(hu_arr,segmentated_body_output_arr,out_dir,pixel_size,filename="TOTSEG_atn_av.bin"):
     """
     Convert HU -> mu (g/cc)
     then write a SIMIND voxel-based phantom file with 
@@ -318,18 +247,19 @@ def save_simind_mu_from_hu(hu_arr,out_dir,pixel_size,filename="for_simind_atn_av
     hu_arr shape is assumed (X, Y, Z) when axis_order='XYZ'.
     """
     
-    print("[NII_PROCCESSING] Converting HU values to Linear Attenutaion")
+    log.info("Converting HU values to Linear Attenutaion")
+    print("[NII_PROCCESSING] Converting CT HU values to Linear Attenutaion...")
     hu = np.asarray(hu_arr, dtype=np.float32)
     
     mu_map = hu_to_mu(hu,pixel_size)
+    mu_map = mu_map*segmentated_body_output_arr
 
     
     os.makedirs(out_dir, exist_ok=True)
     bin_path = os.path.join(out_dir, filename)
     mu_map.tofile(bin_path)
-    print("[NII_PROCCESSING] Linear Attn matrix saved")
 
-    return str(bin_path)
+    return bin_path
 
 def reorient_array (index_32, nparray):
     """
@@ -352,57 +282,48 @@ def reorient_array (index_32, nparray):
     
     return nparray_new
 
-def NII_PROCCESSING(output_path,classes,resize_tuple,simind_para,totseg_para):
+
+def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_file):
     """
     Processing Nifti File of segmentated CT Scan. 
-    
-    Output path should have only a CT input scan (nii.gz) and 
-    a single (ml) segmentated output file (nii.gz)
+
+    asigns 0 to anything outside of body
     """
     totseg_name = totseg_para['name']
     roi_subset = totseg_para['roi_subset']
-    print("[NII_PROCCESSING] Beginning Nifti File Processing")
+    seg_ml_file = ml_file
+    seg_body_file = f"{body_file}/body.nii.gz"
+    
     
     ############### LOAD IMAGE ###############
     
     ct_input = nib.load(f"{output_path}/{totseg_name}_ct_input.nii.gz")
-    segmentated_ml_output  = nib.load(f"{output_path}/{totseg_name}_ml_segmentation.nii.gz")
-    
-    ############### AFFINE STUFF ###############
-    
-    ct_input_affine = ct_input.affine 
-    segmentated_ml_output_affine = segmentated_ml_output.affine
-    
-    #ct_sform, ct_sform_code = sform_info(ct_input_header)
+    segmentated_ml_output  = nib.load(f"{seg_ml_file}")
+    segmentated_body_output = nib.load(f"{seg_body_file}")
 
-    ############### DATA STUFF ###############
+    log.debug("CT, Segmentated ROI's and Segmentated Body successfully loaded into nii_processing.py")
+    
+    ############### CONVERT TO float32 ARRAYS + REORIENT  ###############
     
     print("[NII_PROCCESSING] Obtaining data from Nifti files (storing as numpy array) ")
 
     ct_input_arr = reorient_array(simind_para["Index_32"],np.array(ct_input.get_fdata(dtype=np.float32)))
     segmentated_ml_output_arr  = reorient_array(simind_para["Index_32"],np.array(segmentated_ml_output.get_fdata(dtype=np.float32)))
+    segmentated_body_output_arr  = reorient_array(simind_para["Index_32"],np.array(segmentated_body_output.get_fdata(dtype=np.float32)))
     
-    #resized ct and seg
-    ct_input_arr_resize, segmentated_ml_output_arr_resize = resize(ct_input_arr, resize_tuple), resize(segmentated_ml_output_arr, resize_tuple)
-    
-    print(f"[NII_PROCCESSING] CT input has shape {ct_input_arr.shape}\n[NII_PROCCESSING] Segmentated data has shape {segmentated_ml_output_arr.shape}")
-    print(f"[NII_PROCCESSING] CT input has resized to {ct_input_arr_resize.shape}\n[NII_PROCCESSING] Segmentated data resized to: {segmentated_ml_output_arr_resize.shape}")
-    
-    #Plot Certain Slices from data
-    #slice_shower(ct_input_arr)
+    log.debug("CT, Segmentated ROI's and Segmentated Body successfully reorientated and converted to float32 arrays")
 
-    #RAS 
-    #i,j,k = 0,0,0
-    #x,y,z = voxelCoord_2_scannerCoord(ct_input_affine,[5,3,1])
     
-    #Finding Classes from Segmentated data and creating indivudal array's
+    log.debug(f"CT input matrix has shape: {ct_input_arr.shape}")
+    log.debug(f"Segmentated ROIs matrix has shape: {segmentated_ml_output_arr.shape}")
+    
+     ############### CLASS SEG. & MASK SEG. ###############
     class_seg = segmentation_2_class(segmentated_ml_output_arr,classes,roi_subset)
-    print(f"[NII_PROCCESSING] The unique segmentation values correspond to unique class:\n{class_seg}")
     
     masks = segmentation_multiple_arrays(segmentated_ml_output_arr)
-    print(f"[NII_PROCCESSING] The unique mask array's for each segmentated oragn saved")
-    print(f"[NII_PROCCESSING] Masks is saved in shape of original segmentated array :{segmentated_ml_output_arr.shape}, will be resized in PBPK")
-    ############### ADJUST DATA FOR SIMIND###############
+
+
+    ############### FOR SIMIND: DENSITY / ATTENUTATION MAP ###############
     
     '''
     #Density Path
@@ -415,32 +336,16 @@ def NII_PROCCESSING(output_path,classes,resize_tuple,simind_para,totseg_para):
     print(f"[NII_PROCCESSING] Saved: {dmi_file_path}")
     '''
     
-    '''
-    #Linear Atten Path-before resizing (will save atn_av as a bin float32 file )
-    ct_get_zoom = ct_input_header.get_zooms() #[x,y,z] mm 
-    ct_pixel_size = ct_get_zoom[0] * 0.1 #cm
+    #Linear Atten Path(will save atn_av as a bin float32 file )
+    ct_get_zoom = ct_input.header.get_zooms() #[x,y,z] mm 
+    pixel_spacing_cm = ct_get_zoom[0] * 0.1 #cm
+    slice_thickness = ct_get_zoom[2] * 0.1  # Slice thickness (indxK-direction spacing) (cm)
 
-    slice_thickness = ct_input_header['pixdim'][3]*0.1  # Slice thickness (z-direction spacing) (cm)
-    '''
-    #Linear Atten Path-after resizing (will save atn_av as a bin float32 file )
-
-    old_shape = np.array(ct_input_arr.shape)
-    new_shape = np.array(resize_tuple)
-
-    old_spacing_mm = np.array(ct_input.header.get_zooms()[:3])
-    new_spacing_mm = old_spacing_mm * (old_shape / new_shape)   # per-axis mm/voxel after resize
+    log.debug(f"Pixel Size :{pixel_spacing_cm} cm")
+    log.debug(f"Slice Thickness  :{slice_thickness} cm")
     
-    pixel_spacing_cm = 0.1 * new_spacing_mm[0]  
-    slice_thickness = 0.1 * new_spacing_mm[2]              
+    log.info("Saving CT scan as a Linear Attenutation matrix from a HU matrix.")
+    print("[NII_PROCCESSING] Saving CT scan as a Linear Attenutation matrix from a HU matrix...")
+    atn_av_path = save_simind_mu_from_hu(ct_input_arr, segmentated_body_output_arr, output_path,pixel_spacing_cm)
 
-    print(f"[NII_PROCCESSING] Using the resized matrix's:")
-    print(f"[NII_PROCCESSING] pixel size in cm :{pixel_spacing_cm}")
-    print(f"[NII_PROCCESSING] slice thickness in cm :{slice_thickness}")
-    
-    print("[NII_PROCCESSING] Saving reized CT scan as a Linear Attenutation matrix from a HU matrix.")
-    atn_av_path = save_simind_mu_from_hu(ct_input_arr_resize, output_path,pixel_spacing_cm)
-
-    return ct_input_arr,segmentated_ml_output_arr, ct_input_arr_resize, segmentated_ml_output_arr_resize, class_seg, masks, atn_av_path , pixel_spacing_cm, slice_thickness
-     
-
-#ct_input_arr,segmentated_ml_output_arr, class_seg, masks, atn_av_path = NII_PROCCESSING(output_path,output_file_name,classes)
+    return ct_input_arr,segmentated_ml_output_arr,segmentated_body_output_arr, class_seg, masks, atn_av_path , pixel_spacing_cm, slice_thickness

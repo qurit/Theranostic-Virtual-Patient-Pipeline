@@ -11,7 +11,7 @@
     "TotalSegmentator": {
         "name" : "TOTSEG",
         "device":"cpu", 
-        "fast":true,
+        "fast":false,
         "roi_subset":["liver", "heart", "brain"],          
         "ml":true,                 // single multilabel NIfTI instead of per-class files
         "statistics":false,         // writes statistics.json
@@ -32,7 +32,7 @@
         "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
         "Isotope": "lu177",    // Isotope type - refer to SIMIND documentation
         "NumProjections": 10,   // Number of projections
-        "NumPhotons": 1e6,    // Number of photons
+        "NumPhotons": 5e8,    // Number of photons
         "DetectorDistance": 10, // Detector distance [cm]
         "OutputImgSize": 128,   // Output image dimensions
         "OutputPixelSize": 0.5, // Output pixel size [cm]

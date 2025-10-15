@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pycno, os
 import logging as log
 
-def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg):
+def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_get_zoom):
     pbpk_name = pbpk_para['name']
     
     VOIs_possible = ['Tumor1', 'Tumor2', 'Kidney', 'Heart', 'SG', 'Bone', 'TumorRest', 'Spleen', 'Liver', 'Prostate', 'GI', 'Rest', 'Skin', 'Muscle', 'Brain', 'RedMarrow', 'Lungs', 'Adipose']
@@ -36,6 +36,9 @@ def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg):
 
     ActivityMap = np.zeros((len(pbpk_para["FrameStartTimes"]),*segmentated_ml_output_arr.shape),dtype=np.float32) # 4D array (time, 3D)
 
+
+    pixel_spacing_ml = np.prod(ct_get_zoom)*0.1**3 #multiplies 3 different spacing -> ml
+    
     for key,value in class_seg.items(): # populate ActivityMap 
         if key in roi_2_VOI:
             VOI = roi_2_VOI[key]
@@ -43,19 +46,21 @@ def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg):
             VOI = 'Rest'
         VOI_index = VOIs_possible.index(VOI)
         
-        plt.plot(time,TACs[0,:,VOI_index],label = VOI)
-
+        mask_len_ROI = np.sum(masks[value])
+        
         
         TAC_VOI = TACs[0, :, VOI_index]                           # 1-D vector of the TAC for that VOI across the model grid, length 100
         frame_start = np.asarray(pbpk_para["FrameStartTimes"], float)  # 1-D vector of your frame start times length 3
         TAC_VOI_interp_time  = np.interp(frame_start, time, TAC_VOI)                         #  1-D vector of interpolated activities at each frame time
-        ActivityMap[:, masks[value]] = TAC_VOI_interp_time[:, None]
+        
+        
+        ActivityMap[:, masks[value]] = TAC_VOI_interp_time[:, None]/(mask_len_ROI*pixel_spacing_ml) # MBq/(vox*ml/vox) -> MBq/ml
     
     log.info("Created Activity map using TACs and Segmentated Mask")
     print("Created Activity map using TACs and Segmentated Mask")
     
     
-    ActivityMapSum = np.sum(ActivityMap, axis=(1,2,3))
+    ActivityMapSum = np.sum(ActivityMap, axis=(1,2,3))*pixel_spacing_ml #MBq
     
     log.debug(f"Activity Map Shape: {ActivityMap.shape}")
     log.debug(f"Activity Map Sum: {ActivityMapSum}")

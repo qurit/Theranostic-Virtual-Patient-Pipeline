@@ -121,9 +121,13 @@ def simulate():
     log.info(f"Beginning Segmentation using Total Segmentator")
     print(f"[MAIN] Beginning Segmentation using Total Segmentator...")
 
-    ml_file,body_file = runTOTSEG(input_paths['ct_input_dicom'],out_paths['output_total_seg'], totseg_para)
+    #ml_file,body_file = runTOTSEG(input_paths['ct_input_dicom'],out_paths['output_total_seg'], totseg_para)
 
-    log.info("Segemenation Complete")
+
+    ml_file = "/Users/peteryazdi/Desktop/BC_Cancer/TDT/Output_2025-10-15/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz"
+    body_file = "/Users/peteryazdi/Desktop/BC_Cancer/TDT/Output_2025-10-15/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz"
+    
+    
     print("[MAIN] Segemenation Complete")
     
     log.debug(f"CT input and Segmentated Output can be found:{out_paths['output_total_seg']}")
@@ -133,15 +137,16 @@ def simulate():
     log.info(f"Beginning Nifti file processing")
     print(f"[MAIN] Beginning Nifti file processing...")
     ts_classes = ts_cl.class_map["total"]
-    ct_input_arr,segmentated_ml_output_arr, segmentated_body_output_arr, class_seg, masks, atn_path, pixel_spacing,slice_thickness = NII_PROCCESSING(out_paths['output_total_seg'],ts_classes,simind_para,totseg_para,ml_file,body_file)
+    ct_input_arr,segmentated_ml_output_arr, segmentated_body_output_arr, class_seg, masks, atn_path, pixel_spacing,slice_thickness,ct_get_zoom = NII_PROCCESSING(out_paths['output_total_seg'],ts_classes,simind_para,totseg_para,ml_file,body_file)
     log.debug(f"CT seg. processed, atten bin can be found:{atn_path}")
     
     ##### PBPK #####
     log.info("Beginning PBPK modelling")
     print("[MAIN] Beginning PBPK modelling...")
-    ActivityMapSum,act_path_all = runPBPK(out_paths,pbpk_para,segmentated_ml_output_arr,masks,class_seg)
+    ActivityMapSum,act_path_all = runPBPK(out_paths,pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_get_zoom)
     log.debug(f"PBPK TAC created, activity bin can be found: {act_path_all}")
     
+
     ######SIMIND########
     log.info("Beginning SIMIND simulation")
     print("[MAIN] Beginning SIMIND simulation...")

@@ -261,26 +261,6 @@ def save_simind_mu_from_hu(hu_arr,segmentated_body_output_arr,out_dir,pixel_size
 
     return bin_path
 
-def reorient_array (index_32, nparray):
-    """
-    Reorient depending on the Index_32
-    
-    Index-32 meaning (2D plane (I,J); stack along K):
-      0 -> YZ plane, stack along X  --> return (I,J,K) = (Y, Z, X)
-      1 -> XY plane, stack along Z  --> return (I,J,K) = (X, Y, Z)
-      2 -> XZ plane, stack along Y  --> return (I,J,K) = (X, Z, Y)
-      
-    """
-    if index_32 == 0:         # YZ, stack along X
-        nparray_new = np.transpose(nparray, (1, 2, 0))[:,::-1,:]  # (Y, Z, X)
-
-    elif index_32 == 1:       # XY, stack along Z
-        nparray_new = nparray                         # (X, Y, Z)
-
-    elif index_32 == 2:       # XZ, stack along Y
-        nparray_new = np.transpose(nparray, (0, 2, 1))[:,::-1,:]  # (X, Z, Y)
-    
-    return nparray_new
 
 
 def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_file):
@@ -307,9 +287,11 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     
     print("[NII_PROCCESSING] Obtaining data from Nifti files (storing as numpy array) ")
 
-    ct_input_arr = reorient_array(simind_para["Index_32"],np.array(ct_input.get_fdata(dtype=np.float32)))
-    segmentated_ml_output_arr  = reorient_array(simind_para["Index_32"],np.array(segmentated_ml_output.get_fdata(dtype=np.float32)))
-    segmentated_body_output_arr  = reorient_array(simind_para["Index_32"],np.array(segmentated_body_output.get_fdata(dtype=np.float32)))
+    
+
+    ct_input_arr = np.transpose(np.array(ct_input.get_fdata(dtype=np.float32)),(2,1,0))[:,::-1,:]
+    segmentated_ml_output_arr  = np.transpose(np.array(segmentated_ml_output.get_fdata(dtype=np.float32)),(2,1,0))[:,::-1,:]
+    segmentated_body_output_arr  = np.transpose(np.array(segmentated_body_output.get_fdata(dtype=np.float32)),(2,1,0))[:,::-1,:]
     
     log.debug("CT, Segmentated ROI's and Segmentated Body successfully reorientated and converted to float32 arrays")
 
@@ -348,4 +330,4 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     print("[NII_PROCCESSING] Saving CT scan as a Linear Attenutation matrix from a HU matrix...")
     atn_av_path = save_simind_mu_from_hu(ct_input_arr, segmentated_body_output_arr, output_path,pixel_spacing_cm)
 
-    return ct_input_arr,segmentated_ml_output_arr,segmentated_body_output_arr, class_seg, masks, atn_av_path , pixel_spacing_cm, slice_thickness
+    return ct_input_arr,segmentated_ml_output_arr,segmentated_body_output_arr, class_seg, masks, atn_av_path , pixel_spacing_cm, slice_thickness,ct_get_zoom

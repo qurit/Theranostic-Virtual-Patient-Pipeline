@@ -36,7 +36,7 @@
         "DetectorDistance": 10, // Detector distance [cm]
         "OutputImgSize": 128,   // Output image dimensions
         "OutputPixelSize": 0.5, // Output pixel size [cm]
-        "OutputSliceWidth": 0.5, // Output slice width [cm]
+        "OutputSliceWidth": 0.5 // Output slice width [cm]
     },
     "RECON": {
         "name" : "RECON",

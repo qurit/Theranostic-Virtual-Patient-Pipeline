@@ -33,7 +33,7 @@ def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, segmentated_m
     log.info("Scat and Smc files stored")
     log.info("[SIMIND] Scat and Smc files stored")
 
-    shape = segmentated_ml_output_arr.shape # [263,512,512]
+    shape = segmentated_ml_output_arr.shape 
 
     HalfLength = SliceWidth * shape[0] / 2.0
     OutputImgLength = SliceWidth * shape[0] / OutputSliceWidth
@@ -42,7 +42,6 @@ def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, segmentated_m
     for index,value in enumerate((pbpk_para["FrameStartTimes"])):
 
         ScaleFactor = NumPhotons/ActivityMapSum[index]/num_cores  
-        print(f"ScaleFactor : {ScaleFactor}")
         log.debug(f"ScaleFactor : {ScaleFactor}")
         
         simind_exe = os.path.join(simind_para["SIMINDDirectory"], 'simind')
@@ -92,7 +91,7 @@ def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, segmentated_m
         xtot_w1 = 0
         xtot_w2 = 0
         xtot_w3 = 0
-        for j in range(0, num_cores):
+        for j in range(num_cores):
             w1 = np.fromfile(os.path.join(output_path, f'{output_name}_frame{index}_{j}_tot_w1.a00'), dtype=np.float32)
             w2 = np.fromfile(os.path.join(output_path, f'{output_name}_frame{index}_{j}_tot_w2.a00'), dtype=np.float32)
             w3 = np.fromfile(os.path.join(output_path, f'{output_name}_frame{index}_{j}_tot_w3.a00'), dtype=np.float32)
@@ -122,7 +121,7 @@ def runSIMIND(path,simind_para, pbpk_para, output_path, num_cores, segmentated_m
         
         
     JaszakFile = os.path.join(path, 'bin/jaszak.smc')
-    JaszakFileOut = os.path.join(output_path, f'jaszak.smc')
+    JaszakFileOut = os.path.join(output_path, 'jaszak.smc')
     shutil.copyfile(JaszakFile, JaszakFileOut)
 
     calibration_command = f'{simind_exe} jaszak calib/fi:{Isotope}/cc:{Collimator}/29:1/15:5/fa:11/fa:15/fa:14'

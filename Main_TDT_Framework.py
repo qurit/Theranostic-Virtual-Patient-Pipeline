@@ -3,7 +3,7 @@ Main TDT Framework
 
 Need to add description
 '''
-import json, os, datetime
+import json, os
 from json_minify import json_minify
 import logging as log
 from modules.TOTSEG.runTOTSEG import runTOTSEG
@@ -13,24 +13,6 @@ from modules.SIMIND_SPECT.runSIMIND import runSIMIND
 from modules.PBPK.runPBPK import runPBPK
 from modules.RECON.runRECON import runRECON
 
-
-#Comment out if not using Mac :
-# -------------------- Environment & worker limits (set BEFORE heavy imports) --------------------
-import multiprocessing as mp
-
-# Keep parallelism tame on laptops (adjust if you have more cores/RAM)
-os.environ.setdefault("OMP_NUM_THREADS", "4")
-os.environ.setdefault("MKL_NUM_THREADS", "4")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "4")
-os.environ.setdefault("ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS", "2")
-
-# Reduce internal workers used by TotalSegmentator/MONAI to avoid CPU thrash on macOS
-os.environ.setdefault("TOTALSEGMENTATOR_NUM_WORKERS", "1")
-os.environ.setdefault("MONAI_NUM_WORKERS", "0")
-
-# Allow Torch to fall back gracefully when MPS ops are missing
-os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-# -------------------- End of comment--------------------
 
 def setup():
     path = os.path.dirname(__file__) #finds where this folder is
@@ -42,7 +24,7 @@ def setup():
         config = json.loads(minified_json)
         
     #Output Folder 
-    output_path = f"{path}/Output_{datetime.date.today()}"
+    output_path = f"{path}/Output_Folder"
     os.makedirs(output_path, exist_ok =True)
     
     # --- Create subfolders from OutputNames and return paths ---
@@ -90,7 +72,7 @@ path, config, out_paths, input_paths, totseg_para , pbpk_para, simind_para, reco
 
 logs_dir = os.path.join(output_path, "logs")
 os.makedirs(logs_dir, exist_ok=True)
-log_file = os.path.join(logs_dir, "tdt.log")
+log_file = os.path.join(logs_dir, "TDT_Framework_Log.log")
 
 #logging stuff
 log.basicConfig(
@@ -100,7 +82,39 @@ log.basicConfig(
     filemode="a",
     format="{asctime} - {levelname} - {message}",
     style="{", 
-    datefmt="%Y-%m-%d %H:%M")
+    datefmt="%Y-%m-%d %H:%M:%S")
+
+def log_config(out_paths, input_paths, totseg_para, pbpk_para, simind_para, recon_para):
+    """Log all configuration parameters at startup"""
+    log.info("=== TDT Framework Configuration ===")
+    
+    log.info("Output Paths:")
+    for key, path in out_paths.items():
+        log.info(f"  {key}: {path}")
+    
+    log.info("Input Paths:")
+    for key, path in input_paths.items():
+        log.info(f"  {key}: {path}")
+        
+    log.info("Total Segmentator Parameters:")
+    for key, value in totseg_para.items():
+        log.info(f"  {key}: {value}")
+        
+    log.info("PBPK Parameters:")
+    for key, value in pbpk_para.items():
+        log.info(f"  {key}: {value}")
+        
+    log.info("SIMIND Parameters:")
+    for key, value in simind_para.items():
+        log.info(f"  {key}: {value}")
+        
+    log.info("Reconstruction Parameters:")
+    for key, value in recon_para.items():
+        log.info(f"  {key}: {value}")
+    
+    log.info("=== End Configuration ===\n")
+
+log_config(out_paths, input_paths, totseg_para, pbpk_para, simind_para, recon_para)
 
 
 def simulate():
@@ -108,45 +122,39 @@ def simulate():
     need to fill
     """
     #####TOTAL SEGMENENTATION#####
-    try:
-        mp.set_start_method("spawn", force=True)
-    except RuntimeError:
-        pass
-    # end of comment out
     log.info("Beginning TDT Program")
     print("[MAIN] Beginning TDT Program...")
     
     log.debug(f"Input file:{input_paths['ct_input_dicom']}")
     
-    log.info(f"Beginning Segmentation using Total Segmentator")
-    print(f"[MAIN] Beginning Segmentation using Total Segmentator...")
+    log.info("Beginning Segmentation using Total Segmentator")
+    print("[MAIN] Beginning Segmentation using Total Segmentator...")
 
     #ml_file,body_file = runTOTSEG(input_paths['ct_input_dicom'],out_paths['output_total_seg'], totseg_para)
+    
+    ml_file= '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz'
+    body_file = '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz'
 
+    print("[MAIN] Segmentation Complete")
 
-    ml_file = "/Users/peteryazdi/Desktop/BC_Cancer/TDT/Output_2025-10-15/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz"
-    body_file = "/Users/peteryazdi/Desktop/BC_Cancer/TDT/Output_2025-10-15/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz"
-    
-    
-    print("[MAIN] Segemenation Complete")
-    
     log.debug(f"CT input and Segmentated Output can be found:{out_paths['output_total_seg']}")
 
     
     #####NII PROCCESSING#####
-    log.info(f"Beginning Nifti file processing")
-    print(f"[MAIN] Beginning Nifti file processing...")
+    log.info("Beginning Nifti file processing")
+    print("[MAIN] Beginning Nifti file processing...")
     ts_classes = ts_cl.class_map["total"]
-    ct_input_arr,segmentated_ml_output_arr, segmentated_body_output_arr, class_seg, masks, atn_path, pixel_spacing,slice_thickness,ct_get_zoom = NII_PROCCESSING(out_paths['output_total_seg'],ts_classes,simind_para,totseg_para,ml_file,body_file)
+    ct_input_arr,segmentated_ml_output_arr, segmentated_body_output_arr, class_seg, masks, atn_path, seg_ml_bin_path, seg_body_bin_path, pixel_spacing,slice_thickness,ct_get_zoom = NII_PROCCESSING(out_paths['output_total_seg'],ts_classes,simind_para,totseg_para,ml_file,body_file)
     log.debug(f"CT seg. processed, atten bin can be found:{atn_path}")
+    
     
     ##### PBPK #####
     log.info("Beginning PBPK modelling")
     print("[MAIN] Beginning PBPK modelling...")
     ActivityMapSum,act_path_all = runPBPK(out_paths,pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_get_zoom)
     log.debug(f"PBPK TAC created, activity bin can be found: {act_path_all}")
-    
 
+    quit()
     ######SIMIND########
     log.info("Beginning SIMIND simulation")
     print("[MAIN] Beginning SIMIND simulation...")

@@ -1,21 +1,4 @@
-#Comment out if not using Mac :
-# -------------------- Environment & worker limits (set BEFORE heavy imports) --------------------
-import os, multiprocessing as mp
-
-# Keep parallelism tame on laptops (adjust if you have more cores/RAM)
-os.environ.setdefault("OMP_NUM_THREADS", "4")
-os.environ.setdefault("MKL_NUM_THREADS", "4")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "4")
-os.environ.setdefault("ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS", "2")
-
-# Reduce internal workers used by TotalSegmentator/MONAI to avoid CPU thrash on macOS
-os.environ.setdefault("TOTALSEGMENTATOR_NUM_WORKERS", "1")
-os.environ.setdefault("MONAI_NUM_WORKERS", "0")
-
-# Allow Torch to fall back gracefully when MPS ops are missing
-os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-
-# -------------------- End of comment (make sure to import os) --------------------
+import os
 import torch
 from torch.cuda.amp import GradScaler as _GradScaler
 torch.GradScaler = _GradScaler

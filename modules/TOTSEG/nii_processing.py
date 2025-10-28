@@ -1,10 +1,8 @@
 import nibabel as nib
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.ndimage import median_filter
 import os
 import logging as log
-
+from scipy.ndimage import zoom
 
 def segmentation_2_class(nii_arr,classes,roi_subset):
     """
@@ -25,6 +23,7 @@ def segmentation_2_class(nii_arr,classes,roi_subset):
         else:
             name = classes.get(n)
             class_seg[name] = int(n)
+            
     return class_seg
 
 def segmentation_multiple_arrays(seg_arr):
@@ -58,7 +57,7 @@ def hu_to_mu(CT,pixel_size, mu_water=0.1537,mu_bone=0.2234):
         
     Return:
     mu_map: tensor of the CT in linear attentuion coefficant 
-=
+
     """
     mu_water_pixel = mu_water*pixel_size #pixel/cm
     mu_bone_pixel = mu_bone*pixel_size #pixel cm
@@ -136,17 +135,35 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     
     log.debug(f"CT input matrix has shape: {ct_input_arr.shape}")
     log.debug(f"Segmentated ROIs matrix has shape: {segmentated_ml_output_arr.shape}")
-    
-     ############### CLASS SEG. & MASK SEG. ###############
-    class_seg = segmentation_2_class(segmentated_ml_output_arr,classes,roi_subset)
-    
-    masks = segmentation_multiple_arrays(segmentated_ml_output_arr)
 
+
+    if "kidney_left" in roi_subset and "kidney_right" in roi_subset: # converts left and right kidney into one
+        log.debug("Turning kidney left and kidney right into one set : kidney")
+        kidney_mask = (segmentated_ml_output_arr == 2) | (segmentated_ml_output_arr == 3)
+        segmentated_ml_output_arr[kidney_mask] = 200
+    elif ("kidney_left" in roi_subset and 'kidney_right' not in roi_subset) or ("kidney_right" in roi_subset and 'kidney_right' not in roi_subset):
+        print("Sorry, incapable of running program with only one of the kidney (left or right) currently. Please segmentate both!")
+        log.critical("Sorry, incapable of running program with only one of the kidney (left or right) currently. Please segmentate both!")
+        quit()
+
+    ############### RESIZE ###############
+    resize = simind_para['resize']
+    scale_factor = resize / ct_input_arr.shape[1]  # assuming square in x and y dimensions
+    ct_input_arr = zoom(ct_input_arr, (scale_factor, scale_factor, scale_factor), order=0)
+    segmentated_ml_output_arr = zoom(segmentated_ml_output_arr, (scale_factor, scale_factor, scale_factor), order=0)
+    segmentated_body_output_arr = zoom(segmentated_body_output_arr, (scale_factor, scale_factor, scale_factor), order=0)
+
+    log.info(f"Resized CT and Segmentated arrays to {segmentated_ml_output_arr.shape} for SIMIND input")
+    print(f"[NII_PROCCESSING] Resized CT and Segmentated arrays to {segmentated_ml_output_arr.shape} for SIMIND input")
+    
+    ############### CLASS SEG. & MASK SEG. ###############
+    class_seg = segmentation_2_class(segmentated_ml_output_arr,classes,roi_subset)
+    masks = segmentation_multiple_arrays(segmentated_ml_output_arr)
 
     ############### FOR SIMIND: DENSITY / ATTENUTATION MAP ###############
     
     #Linear Atten Path(will save atn_av as a bin float32 file )
-    ct_get_zoom = ct_input.header.get_zooms() #[x,y,z] mm 
+    ct_get_zoom = tuple(np.array(ct_input.header.get_zooms()) / scale_factor) #[x,y,z] mm
     pixel_spacing_cm = ct_get_zoom[0] * 0.1 #cm
     slice_thickness = ct_get_zoom[2] * 0.1  # Slice thickness (indxK-direction spacing) (cm)
 
@@ -157,4 +174,15 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     print("[NII_PROCCESSING] Saving CT scan as a Linear Attenutation matrix from a HU matrix...")
     atn_av_path = save_simind_mu_from_hu(ct_input_arr, segmentated_body_output_arr, output_path,pixel_spacing_cm)
 
-    return ct_input_arr,segmentated_ml_output_arr,segmentated_body_output_arr, class_seg, masks, atn_av_path , pixel_spacing_cm, slice_thickness,ct_get_zoom
+    ############### SAVE SEG ROI & BODY AS BINARY ###############
+    seg_ml_bin_path = os.path.join(output_path, f"{totseg_name}_ml_segmentation.bin")
+    segmentated_ml_output_arr.astype(np.float32).tofile(seg_ml_bin_path)
+    log.info(f"Saved Segmentated ROI's as binary file at: {seg_ml_bin_path}")
+    print(f"[NII_PROCCESSING] Saved Segmentated ROI's as binary file at: {seg_ml_bin_path}")    
+    
+    seg_body_bin_path = os.path.join(output_path, f"{totseg_name}_body_segmentation.bin")
+    segmentated_body_output_arr.astype(np.float32).tofile(seg_body_bin_path)
+    log.info(f"Saved Segmentated Body as binary file at: {seg_body_bin_path}")
+    print(f"[NII_PROCCESSING] Saved Segmentated Body as binary file at: {seg_body_bin_path}")   
+    
+    return ct_input_arr,segmentated_ml_output_arr,segmentated_body_output_arr, class_seg, masks, atn_av_path , seg_ml_bin_path, seg_body_bin_path, pixel_spacing_cm, slice_thickness,ct_get_zoom, 

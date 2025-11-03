@@ -14,6 +14,8 @@ from modules.PBPK.runPBPK import runPBPK
 from modules.RECON.runRECON import runRECON
 
 
+output_folder_title = 'Output_Folder_CTvsSPECT_Comparison'
+
 def setup():
     path = os.path.dirname(__file__) #finds where this folder is
     config_file = os.path.join(path, 'Configure_Files/config.json')
@@ -24,7 +26,7 @@ def setup():
         config = json.loads(minified_json)
         
     #Output Folder 
-    output_path = f"{path}/Output_Folder"
+    output_path = f"{path}/{output_folder_title}"
     os.makedirs(output_path, exist_ok =True)
     
     # --- Create subfolders from OutputNames and return paths ---
@@ -125,15 +127,15 @@ def simulate():
     log.info("Beginning TDT Program")
     print("[MAIN] Beginning TDT Program...")
     
-    log.debug(f"Input file:{input_paths['ct_input_dicom']}")
+    log.debug(f"Input file:{input_paths['ct_spect_input_dicom']}")
     
     log.info("Beginning Segmentation using Total Segmentator")
     print("[MAIN] Beginning Segmentation using Total Segmentator...")
 
-    #ml_file,body_file = runTOTSEG(input_paths['ct_input_dicom'],out_paths['output_total_seg'], totseg_para)
-    
-    ml_file= '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz'
-    body_file = '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz'
+    #ml_file,body_file = runTOTSEG(input_paths['ct_spect_input_dicom'],out_paths['output_total_seg'], totseg_para)
+
+    ml_file= '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_CTvsSPECT_Comparison/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz'
+    body_file = '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_CTvsSPECT_Comparison/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz'
 
     print("[MAIN] Segmentation Complete")
 
@@ -151,22 +153,22 @@ def simulate():
     ##### PBPK #####
     log.info("Beginning PBPK modelling")
     print("[MAIN] Beginning PBPK modelling...")
-    ActivityMapSum,act_path_all = runPBPK(out_paths,pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_get_zoom)
-    log.debug(f"PBPK TAC created, activity bin can be found: {act_path_all}")
+    ActivityMapSum,ActivityOrganSum, act_path_all_organ, act_path_all_map = runPBPK(out_paths,pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_get_zoom)
+    log.debug(f"PBPK TAC created, activity bin can be found: {act_path_all_map}")
 
-    quit()
+
     ######SIMIND########
     log.info("Beginning SIMIND simulation")
     print("[MAIN] Beginning SIMIND simulation...")
-    runSIMIND(path, simind_para, pbpk_para, out_paths['output_SIMIND'],os.cpu_count(), 
-              segmentated_ml_output_arr, ActivityMapSum, pixel_spacing, slice_thickness, 
-              act_path_all, atn_path)
+    runSIMIND(path, class_seg, simind_para, pbpk_para, out_paths['output_SIMIND'],os.cpu_count(), 
+              segmentated_ml_output_arr, ActivityOrganSum, ActivityMapSum, pixel_spacing, slice_thickness, 
+              act_path_all_organ, atn_path)
     
     
     ######RECON########
     log.info("Beginning RECON using PyTomography")
     print("[MAIN] Beginning RECON using PyTomography...")
-    runRECON(recon_para,pbpk_para,simind_para,out_paths,ActivityMapSum)
+    runRECON(recon_para,pbpk_para,simind_para,out_paths, class_seg, ActivityMapSum)
     
     log.info("TDT Framework finished")
     print("[MAIN] TDT Framework finished")

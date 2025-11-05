@@ -73,7 +73,7 @@ def runSIMIND(path,class_seg, simind_para, pbpk_para, output_path, num_cores, se
             f'/12:{DetectorDistance}'     # set in config
             f'/28:{OutputPixelSize}'      # set in config
             f'/29:{NumProjections}'       # set in config
-            f'/31:{PixelWidth}'           # ct_input.header.get_zooms()[0] *0.1 (cm)
+            f'/31:{PixelWidth}'           # ct_input.header.get_zooms()[0] * 0.1 (cm)
             f'/34:{shape[0]}'                   # 263
             f'/76:{OutputImgSize}'        # set in config
             f'/77:{OutputImgLength}'      # SliceWidth*nImages/OutputSliceWidth 
@@ -84,7 +84,7 @@ def runSIMIND(path,class_seg, simind_para, pbpk_para, output_path, num_cores, se
         processes = []
         for j in range(num_cores):
             simind_command = f'{simind_exe} {output_name} {output_name}_{roi_list[index]}_{j} '
-            command = simind_command + simind_switches
+            command = simind_command + simind_switches + f'/rr:{j}' #set random seed for each core
             if j == 0:
                 p = subprocess.Popen(command, shell=True, cwd=output_path)
             else:

@@ -7,7 +7,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_get_zoom):
+def runPBPK(out_paths, pbpk_para,seg_plus_body_arr,masks,class_seg,ct_get_zoom):
     pbpk_name = pbpk_para['name'] 
     act_path_all_map = []
     act_path_all_organ = []
@@ -19,6 +19,7 @@ def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_ge
 #        "NA":'Tumor2', 
         "kidney":'Kidney', 
         "heart":'Heart', 
+        "body" : 'Rest',
         #'SG',
         #'Bone',
         #'TumorRest', 
@@ -31,11 +32,10 @@ def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_ge
         #'Muscle',
         'brain':'Brain'
         #'RedMarrow',
-        #'Lungs',
+        #'lungs':'Lungs',
         #'Adipose'
-        "stomach"
         }
-    ActivityMap = np.zeros((len(pbpk_para["FrameStartTimes"]),*segmentated_ml_output_arr.shape),dtype=np.float32) # 4D array (time, 3D)
+    ActivityMap = np.zeros((len(pbpk_para["FrameStartTimes"]),*seg_plus_body_arr.shape),dtype=np.float32) # 4D array (time, 3D)
     pixel_spacing_ml = np.prod(ct_get_zoom)*0.1**3 #multiplies 3 different spacing -> ml
     
     
@@ -45,6 +45,7 @@ def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_ge
         stop=max(pbpk_para['FrameStartTimes']),
         observables=VOIs_possible
     )
+    
     #TAC shape (1, 100, 18) (patient, time step, VOIs)
     log.debug("TAC created successfully")
 
@@ -61,7 +62,7 @@ def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_ge
         frame_start = np.asarray(pbpk_para["FrameStartTimes"], float)  # 1-D vector of your frame start times length 3 [240, 1440]
         TAC_VOI_interp_time  = np.interp(frame_start, time, TAC_VOI)  #  1-D vector of interpolated activities at each frame time
 
-        ActivityMap_Organ = np.zeros((len(pbpk_para["FrameStartTimes"]),*segmentated_ml_output_arr.shape),dtype=np.float32) # reset to zero for next organ
+        ActivityMap_Organ = np.zeros((len(pbpk_para["FrameStartTimes"]),*seg_plus_body_arr.shape),dtype=np.float32) # reset to zero for next organ
         ActivityMap_Organ[:, masks[value]] = TAC_VOI_interp_time[:, None]/(mask_len_ROI*pixel_spacing_ml)
         ActivityMap_Organ_path = os.path.join(out_paths['output_PBPK'], f'{pbpk_name}_{key}_act_av.bin')
         ActivityMap_Organ = ActivityMap_Organ.astype(np.float32)
@@ -105,7 +106,6 @@ def runPBPK(out_paths, pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_ge
         frame = frame.astype(np.float32)
         frame.tofile(act_path_single)
     
-    quit()
 
 
     return ActivityMapSum, ActivityOrganSum, act_path_all_organ, act_path_all_map

@@ -14,7 +14,7 @@ from modules.PBPK.runPBPK import runPBPK
 from modules.RECON.runRECON import runRECON
 
 
-output_folder_title = 'Output_Folder_CTvsSPECT_Comparison'
+output_folder_title = 'Output_Folder_Poster_ROI:[kidney, liver, spleen, heart]'
 
 def setup():
     path = os.path.dirname(__file__) #finds where this folder is
@@ -134,8 +134,8 @@ def simulate():
 
     #ml_file,body_file = runTOTSEG(input_paths['ct_spect_input_dicom'],out_paths['output_total_seg'], totseg_para)
 
-    ml_file= '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_CTvsSPECT_Comparison/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz'
-    body_file = '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_CTvsSPECT_Comparison/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz'
+    ml_file= '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Poster_ROI:[kidney, liver, spleen, heart]/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz'
+    body_file = '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Poster_ROI:[kidney, liver, spleen, heart]/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz'
 
     print("[MAIN] Segmentation Complete")
 
@@ -146,14 +146,15 @@ def simulate():
     log.info("Beginning Nifti file processing")
     print("[MAIN] Beginning Nifti file processing...")
     ts_classes = ts_cl.class_map["total"]
-    ct_input_arr,segmentated_ml_output_arr, segmentated_body_output_arr, class_seg, masks, atn_path, seg_ml_bin_path, seg_body_bin_path, pixel_spacing,slice_thickness,ct_get_zoom = NII_PROCCESSING(out_paths['output_total_seg'],ts_classes,simind_para,totseg_para,ml_file,body_file)
+    ct_input_arr,segmentated_ml_output_arr, segmentated_body_output_arr,seg_plus_body_arr, class_seg, mask_roi, mask_roi_plus_body, atn_path, seg_ml_bin_path, seg_body_bin_path, pixel_spacing,slice_thickness,ct_get_zoom = NII_PROCCESSING(out_paths['output_total_seg'],ts_classes,simind_para,totseg_para,ml_file,body_file)
     log.debug(f"CT seg. processed, atten bin can be found:{atn_path}")
     
     
+
     ##### PBPK #####
     log.info("Beginning PBPK modelling")
     print("[MAIN] Beginning PBPK modelling...")
-    ActivityMapSum,ActivityOrganSum, act_path_all_organ, act_path_all_map = runPBPK(out_paths,pbpk_para,segmentated_ml_output_arr,masks,class_seg,ct_get_zoom)
+    ActivityMapSum,ActivityOrganSum, act_path_all_organ, act_path_all_map = runPBPK(out_paths,pbpk_para,seg_plus_body_arr,mask_roi_plus_body,class_seg,ct_get_zoom)
     log.debug(f"PBPK TAC created, activity bin can be found: {act_path_all_map}")
 
 
@@ -161,7 +162,7 @@ def simulate():
     log.info("Beginning SIMIND simulation")
     print("[MAIN] Beginning SIMIND simulation...")
     runSIMIND(path, class_seg, simind_para, pbpk_para, out_paths['output_SIMIND'],os.cpu_count(), 
-              segmentated_ml_output_arr, ActivityOrganSum, ActivityMapSum, pixel_spacing, slice_thickness, 
+              seg_plus_body_arr, ActivityOrganSum, ActivityMapSum, pixel_spacing, slice_thickness, 
               act_path_all_organ, atn_path)
     
     

@@ -4,6 +4,7 @@ import os
 import logging as log
 from scipy.ndimage import zoom
 
+
 def segmentation_2_class(nii_arr,classes,roi_subset):
     """
     The segmentation stores each ROI as a certain value
@@ -99,6 +100,30 @@ def save_simind_mu_from_hu(hu_arr,segmentated_body_output_arr,out_dir,pixel_size
     return bin_path
 
 
+def seg_ROI_plus_body(seg_roi_arr, seg_body_arr):
+    # Ensure arrays are numpy arrays
+    roi = np.asarray(seg_roi_arr)
+    body = np.asarray(seg_body_arr)
+
+    # Masks
+    roi_mask  = roi != 0
+    body_mask = body > 0
+
+    # Start with zeros (background)
+    seg_plus = np.zeros_like(roi, dtype=np.float32)
+
+    # Body-only voxels labeled in totalseg map
+    seg_plus[body_mask] = 201
+
+    seg_plus[roi_mask] = roi[roi_mask]
+
+    # Union mask 
+    mask_body_plus_roi = segmentation_multiple_arrays(seg_plus)
+    
+    return seg_plus, mask_body_plus_roi
+    
+
+
 
 def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_file):
     """
@@ -136,7 +161,6 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     log.debug(f"CT input matrix has shape: {ct_input_arr.shape}")
     log.debug(f"Segmentated ROIs matrix has shape: {segmentated_ml_output_arr.shape}")
 
-
     if "kidney_left" in roi_subset and "kidney_right" in roi_subset: # converts left and right kidney into one
         log.debug("Turning kidney left and kidney right into one set : kidney")
         kidney_mask = (segmentated_ml_output_arr == 2) | (segmentated_ml_output_arr == 3)
@@ -149,7 +173,7 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     ############### RESIZE ###############
     resize = simind_para['resize']
     scale_factor = resize / ct_input_arr.shape[1]  # assuming square in x and y dimensions
-    ct_input_arr = zoom(ct_input_arr, (scale_factor, scale_factor, scale_factor), order=0)
+    ct_input_arr = zoom(ct_input_arr, (scale_factor, scale_factor, scale_factor), order=0) # didnt resize z, should make functional so in config
     segmentated_ml_output_arr = zoom(segmentated_ml_output_arr, (scale_factor, scale_factor, scale_factor), order=0)
     segmentated_body_output_arr = zoom(segmentated_body_output_arr, (scale_factor, scale_factor, scale_factor), order=0)
 
@@ -157,18 +181,21 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     print(f"[NII_PROCCESSING] Resized CT and Segmentated arrays to {segmentated_ml_output_arr.shape} for SIMIND input")
     
     ############### CLASS SEG. & MASK SEG. ###############
-    class_seg = segmentation_2_class(segmentated_ml_output_arr,classes,roi_subset)
-    masks = segmentation_multiple_arrays(segmentated_ml_output_arr)
+    seg_plus_body_arr,mask_roi_plus_body = seg_ROI_plus_body(segmentated_ml_output_arr,segmentated_body_output_arr)
+    
+    mask_roi = segmentation_multiple_arrays(segmentated_ml_output_arr)
+    
+    class_seg = segmentation_2_class(seg_plus_body_arr,classes,roi_subset)
 
     ############### FOR SIMIND: DENSITY / ATTENUTATION MAP ###############
     
     #Linear Atten Path(will save atn_av as a bin float32 file )
     ct_get_zoom = tuple(np.array(ct_input.header.get_zooms()) / scale_factor) #[x,y,z] mm
     pixel_spacing_cm = ct_get_zoom[0] * 0.1 #cm
-    slice_thickness = ct_get_zoom[2] * 0.1  # Slice thickness (indxK-direction spacing) (cm)
+    slice_thickness = ct_get_zoom[2] * 0.1   # Slice thickness (indxK-direction spacing) (cm)
 
-    log.debug(f"Pixel Size :{pixel_spacing_cm} cm")
-    log.debug(f"Slice Thickness  :{slice_thickness} cm")
+    log.debug(f"Pixel Size : {pixel_spacing_cm} cm")
+    log.debug(f"Slice Thickness  : {slice_thickness} cm")
     
     log.info("Saving CT scan as a Linear Attenutation matrix from a HU matrix.")
     print("[NII_PROCCESSING] Saving CT scan as a Linear Attenutation matrix from a HU matrix...")
@@ -183,6 +210,12 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     seg_body_bin_path = os.path.join(output_path, f"{totseg_name}_body_segmentation.bin")
     segmentated_body_output_arr.astype(np.float32).tofile(seg_body_bin_path)
     log.info(f"Saved Segmentated Body as binary file at: {seg_body_bin_path}")
-    print(f"[NII_PROCCESSING] Saved Segmentated Body as binary file at: {seg_body_bin_path}")   
+    print(f"[NII_PROCCESSING] Saved Segmentated Body as binary file at: {seg_body_bin_path}")
     
-    return ct_input_arr,segmentated_ml_output_arr,segmentated_body_output_arr, class_seg, masks, atn_av_path , seg_ml_bin_path, seg_body_bin_path, pixel_spacing_cm, slice_thickness,ct_get_zoom, 
+    seg_body_plus_ml_bin_path = os.path.join(output_path, f"{totseg_name}_body_plus_ml_segmentation.bin")
+    seg_plus_body_arr.astype(np.float32).tofile(seg_body_plus_ml_bin_path)
+    log.info(f"Saved Segmentated Body as binary file at: {seg_body_plus_ml_bin_path}")
+    print(f"[NII_PROCCESSING] Saved Segmentated Body as binary file at: {seg_body_plus_ml_bin_path}")    
+    
+    
+    return ct_input_arr,segmentated_ml_output_arr,segmentated_body_output_arr,seg_plus_body_arr,class_seg, mask_roi, mask_roi_plus_body,atn_av_path , seg_ml_bin_path, seg_body_bin_path, pixel_spacing_cm, slice_thickness,ct_get_zoom 

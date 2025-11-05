@@ -111,6 +111,7 @@ class_map = {
     # classes of new TotalSegmentator v2
     "total": {
         200: "kidney", #added myself , 200 not being used 
+        201: "body",  #added myself , 201 not being used 
         1: "spleen",
         2: "kidney_right",
         3: "kidney_left",

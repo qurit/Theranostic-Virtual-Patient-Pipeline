@@ -5,6 +5,8 @@ import logging as log
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from scipy import ndimage
+import math
 
 
 def runPBPK(out_paths, pbpk_para,seg_plus_body_arr,masks,class_seg,ct_get_zoom):
@@ -66,6 +68,18 @@ def runPBPK(out_paths, pbpk_para,seg_plus_body_arr,masks,class_seg,ct_get_zoom):
         ActivityMap_Organ[:, masks[value]] = TAC_VOI_interp_time[:, None]/(mask_len_ROI*pixel_spacing_ml)
         ActivityMap_Organ_path = os.path.join(out_paths['output_PBPK'], f'{pbpk_name}_{key}_act_av.bin')
         ActivityMap_Organ = ActivityMap_Organ.astype(np.float32)
+        
+        # #to be taken out 
+        # i = 0.93
+        # print(ActivityMap_Organ.shape)
+        # x= math.floor((ActivityMap_Organ.shape[1]-ActivityMap_Organ.shape[1]*i)/2)
+        # y=math.ceil((ActivityMap_Organ.shape[2]-ActivityMap_Organ.shape[2]*i)/2)
+        # z=math.ceil((ActivityMap_Organ.shape[3]-ActivityMap_Organ.shape[3]*i)/2)
+        # ActivityMap_Organ = ndimage.zoom(ActivityMap_Organ,(1,i,i,i),order=0)
+
+        # ActivityMap_Organ = np.pad(ActivityMap_Organ,pad_width=((0,0),(x,x),(y,y),(z,z)))
+
+        
         ActivityMap_Organ[0].tofile(ActivityMap_Organ_path) # saves only first frame for checking
         act_path_all_organ.append(ActivityMap_Organ_path)
 
@@ -106,6 +120,4 @@ def runPBPK(out_paths, pbpk_para,seg_plus_body_arr,masks,class_seg,ct_get_zoom):
         frame = frame.astype(np.float32)
         frame.tofile(act_path_single)
     
-
-
     return ActivityMapSum, ActivityOrganSum, act_path_all_organ, act_path_all_map

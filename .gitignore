@@ -1,0 +1,4 @@
+
+# Large binaries & outputs
+*.bin
+Output_Folder*/

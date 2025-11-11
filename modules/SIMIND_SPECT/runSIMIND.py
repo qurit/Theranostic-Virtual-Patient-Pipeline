@@ -43,12 +43,12 @@ def runSIMIND(path,class_seg, simind_para, pbpk_para, output_path, num_cores, se
 
     HalfLength = SliceWidth * shape[0] / 2.0
     OutputImgLength = SliceWidth * shape[0] / OutputSliceWidth
-    
 
     for index, act_path in enumerate(act_path_all_organ): # only looks at frame 0 activity maps
         ratio_activity_organ = ActivityOrganSum[roi_list[index]][0]/(ActivityMapSum[0])  # MBq / MBq
 
         ScaleFactor = NumPhotons*ratio_activity_organ/ActivityMapSum[0]/num_cores
+        
         log.debug(f"ScaleFactor : {ScaleFactor}")
         
         simind_exe = os.path.join(simind_para["SIMINDDirectory"], 'simind')
@@ -64,6 +64,8 @@ def runSIMIND(path,class_seg, simind_para, pbpk_para, output_path, num_cores, se
             f'/fs:{act_name}'             # PBPK_organ_act_av.bin
             f'/14:{index_14}'             # set in config
             f'/15:{index_15}'             # set in config
+            f'/10:40'                     #detector size (cm)
+            f'/8:40'                      #detector size (cm)
             f'/cc:{Collimator}'           # set in config
             f'/fi:{Isotope}'              # set in config
             f'/nn:{ScaleFactor}'           # NumPhotons {set in config} /ImgSum[index] {np.sum(FrameArrs, axis=(1,2,3)[index])}/num_cores
@@ -122,9 +124,12 @@ def runSIMIND(path,class_seg, simind_para, pbpk_para, output_path, num_cores, se
         xtot_w2 = 0
         xtot_w3 = 0
         for organ in roi_list:
+            
             w1 = np.fromfile(os.path.join(output_path, f'{output_name}_{organ}_tot_w1.a00'), dtype=np.float32)
             w2 = np.fromfile(os.path.join(output_path, f'{output_name}_{organ}_tot_w2.a00'), dtype=np.float32)
             w3 = np.fromfile(os.path.join(output_path, f'{output_name}_{organ}_tot_w3.a00'), dtype=np.float32)
+            
+
             xtot_w1+=w1*ActivityOrganSum[organ][indx]*Frame_durations[indx] #counts
             xtot_w2+=w2*ActivityOrganSum[organ][indx]*Frame_durations[indx] #counts
             xtot_w3+=w3*ActivityOrganSum[organ][indx]*Frame_durations[indx] #counts
@@ -132,6 +137,7 @@ def runSIMIND(path,class_seg, simind_para, pbpk_para, output_path, num_cores, se
         xtot_w1.tofile(os.path.join(output_path, f'{output_name}_{fr}min_tot_w1.a00'))
         xtot_w2.tofile(os.path.join(output_path, f'{output_name}_{fr}min_tot_w2.a00'))
         xtot_w3.tofile(os.path.join(output_path, f'{output_name}_{fr}min_tot_w3.a00'))
+
 
 
 

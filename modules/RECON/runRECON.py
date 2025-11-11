@@ -43,6 +43,7 @@ def runRECON(recon_para,pbpk_para,simind_para,out_paths, class_seg, ActivityMapS
     headerdata = np.array(headerdata)
     proj_dim1 = get_header_value(headerdata, 'matrix size [1]', int)
     proj_dim2 = get_header_value(headerdata, 'matrix size [2]', int)
+
     num_proj = get_header_value(headerdata, 'total number of images', int)
     
     ww_peak, ww_lower, ww_upper = [simind.get_energy_window_width(path) for path in [photopeak_path, lower_path, upper_path]]

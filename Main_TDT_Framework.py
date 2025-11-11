@@ -14,7 +14,7 @@ from modules.PBPK.runPBPK import runPBPK
 from modules.RECON.runRECON import runRECON
 
 
-output_folder_title = 'Output_Folder_Poster_ROI:[kidney, liver, spleen, heart]'
+output_folder_title = 'Output_Folder_Poster_For_real'
 
 def setup():
     path = os.path.dirname(__file__) #finds where this folder is
@@ -132,10 +132,10 @@ def simulate():
     log.info("Beginning Segmentation using Total Segmentator")
     print("[MAIN] Beginning Segmentation using Total Segmentator...")
 
-    #ml_file,body_file = runTOTSEG(input_paths['ct_spect_input_dicom'],out_paths['output_total_seg'], totseg_para)
+    ml_file,body_file = runTOTSEG(input_paths['ct_spect_input_dicom'],out_paths['output_total_seg'], totseg_para)
 
-    ml_file= '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Poster_ROI:[kidney, liver, spleen, heart]/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz'
-    body_file = '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Poster_ROI:[kidney, liver, spleen, heart]/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz'
+    #ml_file= '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Poster_ROI:[kidney, liver, spleen, heart]/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz'
+    #body_file = '/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Poster_ROI:[kidney, liver, spleen, heart]/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz'
 
     print("[MAIN] Segmentation Complete")
 

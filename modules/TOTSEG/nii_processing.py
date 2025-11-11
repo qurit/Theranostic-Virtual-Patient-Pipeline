@@ -149,7 +149,6 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
     
     print("[NII_PROCCESSING] Obtaining data from Nifti files (storing as numpy array) ")
 
-    
 
     ct_input_arr = np.transpose(np.array(ct_input.get_fdata(dtype=np.float32)),(2,1,0))[:,::-1,:]
     segmentated_ml_output_arr  = np.transpose(np.array(segmentated_ml_output.get_fdata(dtype=np.float32)),(2,1,0))[:,::-1,:]
@@ -172,10 +171,16 @@ def NII_PROCCESSING(output_path,classes,simind_para,totseg_para,ml_file,body_fil
 
     ############### RESIZE ###############
     resize = simind_para['resize']
-    scale_factor = resize / ct_input_arr.shape[1]  # assuming square in x and y dimensions
-    ct_input_arr = zoom(ct_input_arr, (scale_factor, scale_factor, scale_factor), order=0) # didnt resize z, should make functional so in config
-    segmentated_ml_output_arr = zoom(segmentated_ml_output_arr, (scale_factor, scale_factor, scale_factor), order=0)
-    segmentated_body_output_arr = zoom(segmentated_body_output_arr, (scale_factor, scale_factor, scale_factor), order=0)
+    scale_factor = (resize)/ct_input_arr.shape[1]  # assuming square in x and y dimensions
+    
+    
+    ct_input_arr = zoom(ct_input_arr, (scale_factor,scale_factor, scale_factor), order=0) 
+    segmentated_ml_output_arr = zoom(segmentated_ml_output_arr, (scale_factor,scale_factor, scale_factor), order=0)
+    segmentated_body_output_arr = zoom(segmentated_body_output_arr, (scale_factor,scale_factor, scale_factor), order=0)
+
+    
+   
+
 
     log.info(f"Resized CT and Segmentated arrays to {segmentated_ml_output_arr.shape} for SIMIND input")
     print(f"[NII_PROCCESSING] Resized CT and Segmentated arrays to {segmentated_ml_output_arr.shape} for SIMIND input")

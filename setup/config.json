@@ -1,0 +1,43 @@
+{
+    "OutputNames": { // Output directory names (one for each module)///
+        "output_ORGAN_SEGMENTATION": "TOTSEG_Outputs",
+        "output_PBPK": "PBPK_Outputs",
+        "output_SIMIND": "SIMIND_Outputs",
+        "output_RECON": "RECON_Outputs"
+    },
+    "TotalSegmentator": { // Organ Segmentation parameters
+        "name" : "TOTSEG", // File name prefix
+        "device":"cpu", 
+        "fast":false, // Lower resolution if True
+        "roi_subset":["kidney_right", "kidney_left", "liver"], // ROIs         
+        "ml":true,                 // Single multilabel NIfTI instead of per-class files
+        "statistics":false,         // Writes statistics.json
+        "radiomics":false          // Writes statistics_radiomics.json 
+    },
+    "PBPK": { // PBPK parameters
+        "name" : "PBPK", // File name prefix
+        "HotTotalAmount": 7.5,  // Total amount of hot tracer [nmol]
+        "ColdTotalAmount": 90,  // Total amount of cold tracer [nmol]
+        "LambdaPhys": 7.15e-05, // Physical decay constant [1/min]
+        "FrameStartTimes": [240,1440,2880,5760],   // Start time of each frame [min] [240,1440,2880,5760]
+        "FrameDurations": [10,10,10,10] // Duration of each frame [seconds]
+    },
+    "SIMIND": { // SIMIND parameters
+        "name" : "simind", // File name prefix
+        "resize": 256, // x and y dimensions for resizing for SIMIND input
+        "SIMINDDirectory": "/home/jhubadmin/simind/simind",    // Path to SIMIND executable
+        "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
+        "Isotope": "lu177",    // Isotope type - refer to SIMIND documentation
+        "NumProjections": 64,   // Number of projections (96 is standard)
+        "NumPhotons": 1e7,    // Number of photons
+        "DetectorDistance": 10, // Detector distance [cm]
+        "OutputImgSize": 128,   // Output image dimensions
+        "OutputPixelSize": 0.5, // Output pixel size [cm]
+        "OutputSliceWidth": 0.5 // Output slice width [cm]
+    },
+    "RECON": { // PyTomography parameters
+        "name" : "RECON", // File name prefix
+        "Iterations": 4,    // Number of iterations used in reconstruction
+        "Subsets": 8    // Number of subsets used in reconstruction
+    }
+}

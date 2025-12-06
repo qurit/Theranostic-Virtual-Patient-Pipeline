@@ -20,9 +20,9 @@ import logging
 import os
 
 import setup.init as setup
-import modules.spect_pre_process.totalseg_classmap as ts_cl
-from modules.spect_pre_process.ct_seg_preprocessing import preprocess_ct_and_seg_for_simind
 
+from modules.spect_pre_process.ct_seg_preprocessing import preprocess_ct_and_seg_for_simind
+from modules.spect_post_process.image_analysis import resample_spect_to_atn_grid
 from modules.spect_pre_process.run_totseg import run_totseg
 from modules.pbpk.run_pbpk import run_pbpk
 from modules.spect_simulation.run_simind import run_simind
@@ -62,7 +62,7 @@ def tdt_ct_to_spect(ct_input_path, patient_num):
     logger.info("Input CT path: %s", ct_input_path)
 
     # ----- SETUP -----
-    output_folder_title = f"Output_Folder_testing_{patient_num}"  # User adjustable
+    output_folder_title = f"Output_Folder_Testing_{patient_num}"  # User adjustable
     current_dir = os.path.dirname(__file__)
 
     (
@@ -96,15 +96,16 @@ def tdt_ct_to_spect(ct_input_path, patient_num):
     stage_name = "Organ segmentation (Total Segmentator)"
     print(f"[MAIN] Stage 1/5: {stage_name}...")
     logger.info("Stage 1/5: %s - started", stage_name)
-
-    #ml_seg_path, body_seg_path = run_totseg(
-    #    ct_input_path,
-    #    output_subdir_paths["output_ORGAN_SEGMENTATION"],
-    #    totseg_para,
-    #)
     
-    ml_seg_path = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_testing_1/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz"
-    body_seg_path = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_testing_1/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz"
+    """
+    ml_seg_path, body_seg_path = run_totseg(
+        ct_input_path,
+        output_subdir_paths["output_ORGAN_SEGMENTATION"],
+        totseg_para,
+    )
+    """
+    ml_seg_path = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Testing_1/TOTSEG_Outputs/TOTSEG_ml_segmentation.nii.gz"
+    body_seg_path = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Testing_1/TOTSEG_Outputs/TOTSEG_body_segmentation.nii.gz"
 
     logger.info("Stage 1/5: %s - completed", stage_name)
     logger.debug("ML segmentation output path: %s", ml_seg_path)
@@ -114,8 +115,6 @@ def tdt_ct_to_spect(ct_input_path, patient_num):
     stage_name = "SIMIND Preprocessing"
     print(f"[MAIN] Stage 2/5: {stage_name}...")
     logger.info("Stage 2/5: %s - started", stage_name)
-
-    ts_classes = ts_cl.class_map["total"]
 
     (
         ct_input_array,
@@ -133,7 +132,6 @@ def tdt_ct_to_spect(ct_input_path, patient_num):
         ct_zoom,
     ) = preprocess_ct_and_seg_for_simind(
         output_subdir_paths["output_ORGAN_SEGMENTATION"],
-        ts_classes,
         simind_para,
         totseg_para,
         ml_seg_path,
@@ -180,7 +178,7 @@ def tdt_ct_to_spect(ct_input_path, patient_num):
     stage_name = "SPECT simulation"
     print(f"[MAIN] Stage 4/5: {stage_name}...")
     logger.info("Stage 4/5: %s - started", stage_name)
-
+    """
     run_simind(
         current_dir,
         class_seg,
@@ -217,13 +215,24 @@ def tdt_ct_to_spect(ct_input_path, patient_num):
         class_seg,
         activity_map_sum,
     )
-
+    """
+    recon_spect_path = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Testing_1/RECON_Outputs/RECON_frame0.nii"
     logger.info("Stage 5/5: %s - completed", stage_name)
     logger.info("Reconstructed SPECT image path: %s", recon_spect_path)
     logger.debug(
         "Reconstruction output directory: %s",
         output_subdir_paths["output_RECON"],
     )
+    
+    logger.info("Post-processing started: Resampling reconstructed SPECT to attenuation map grid.")
+    resampled_recon_path = resample_spect_to_atn_grid(
+        recon_spect_path,
+        seg_plus_body_array.shape,
+        pixel_spacing,
+        slice_thickness,
+        output_subdir_paths["output_RECON"],
+    )
+    
 
     # ----- PIPELINE FINISH -----
     print("[MAIN] TDT pipeline finished.")
@@ -251,6 +260,6 @@ def tdt_lesion_stuff():
 
 
 if __name__ == "__main__":
-    ct_input_dir = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/input_dir2/CT"
+    ct_input_dir = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/input_dir/CT"
     tdt_ct_to_spect(ct_input_dir, patient_num=1)
 

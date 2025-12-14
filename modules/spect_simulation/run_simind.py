@@ -12,6 +12,148 @@ def get_spect_sim_output_path(config):
     spect_sim_file_prefix = config["spect_simulation"]["name"] 
     return output_path, spect_sim_file_prefix
 
+def run_jaszczak_calibration(current_dir_path, output_path, simind_exe, isotope, collimator):
+    """
+    Copy the Jaszczak phantom SMC and run SIMIND calibration.
+    """
+    jaszak_file = os.path.join(current_dir_path, "bin", "jaszak.smc")
+    jaszak_file_out = os.path.join(output_path, "jaszak.smc")
+    shutil.copyfile(jaszak_file, jaszak_file_out)
+
+    calibration_command = (
+        f"{simind_exe} jaszak calib"
+        f"/fi:{isotope}"
+        f"/cc:{collimator}"
+        f"/29:1"
+        f"/15:5"
+        f"/fa:11"
+        f"/fa:15"
+        f"/fa:14"
+    )
+
+    subprocess.run(
+        calibration_command,
+        shell=True,
+        cwd=output_path,
+        stdout=subprocess.DEVNULL,
+    )
+    
+
+
+def combine_organs_into_frame_totals(output_path, spect_sim_file_prefix, roi_list,
+                                    frame_start, frame_durations, ActivityOrganSum):
+    """
+    Combine per-organ TOT files into per-frame totals using organ activity and frame duration.
+    Writes {prefix}_{t}min_tot_w[1|2|3].a00 for each frame.
+    """
+    for frame_index, frame_start_time in enumerate(frame_start):
+        xtot_w1 = 0
+        xtot_w2 = 0
+        xtot_w3 = 0
+
+        for organ in roi_list:
+            w1 = np.fromfile(
+                os.path.join(output_path, f"{spect_sim_file_prefix}_{organ}_tot_w1.a00"),
+                dtype=np.float32,
+            )
+            w2 = np.fromfile(
+                os.path.join(output_path, f"{spect_sim_file_prefix}_{organ}_tot_w2.a00"),
+                dtype=np.float32,
+            )
+            w3 = np.fromfile(
+                os.path.join(output_path, f"{spect_sim_file_prefix}_{organ}_tot_w3.a00"),
+                dtype=np.float32,
+            )
+
+            xtot_w1 += w1 * ActivityOrganSum[organ][frame_index] * frame_durations[frame_index]
+            xtot_w2 += w2 * ActivityOrganSum[organ][frame_index] * frame_durations[frame_index]
+            xtot_w3 += w3 * ActivityOrganSum[organ][frame_index] * frame_durations[frame_index]
+
+        np.asarray(xtot_w1, dtype=np.float32).tofile(
+            os.path.join(output_path, f"{spect_sim_file_prefix}_{frame_start_time}min_tot_w1.a00")
+        )
+        np.asarray(xtot_w2, dtype=np.float32).tofile(
+            os.path.join(output_path, f"{spect_sim_file_prefix}_{frame_start_time}min_tot_w2.a00")
+        )
+        np.asarray(xtot_w3, dtype=np.float32).tofile(
+            os.path.join(output_path, f"{spect_sim_file_prefix}_{frame_start_time}min_tot_w3.a00")
+        )
+
+def aggregate_core_totals_for_organ(output_path, spect_sim_file_prefix, organ_name, num_cores):
+    """
+    Read per-core TOT files for the organ, average them, and write organ-level TOT files.
+    """
+    xtot_w1 = 0
+    xtot_w2 = 0
+    xtot_w3 = 0
+
+    for j in range(num_cores):
+        w1 = np.fromfile(
+            os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_{j}_tot_w1.a00"),
+            dtype=np.float32,
+        )
+        w2 = np.fromfile(
+            os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_{j}_tot_w2.a00"),
+            dtype=np.float32,
+        )
+        w3 = np.fromfile(
+            os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_{j}_tot_w3.a00"),
+            dtype=np.float32,
+        )
+        xtot_w1 += w1
+        xtot_w2 += w2
+        xtot_w3 += w3
+
+    xtot_w1 /= num_cores
+    xtot_w2 /= num_cores
+    xtot_w3 /= num_cores
+
+    np.asarray(xtot_w1, dtype=np.float32).tofile(
+        os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_tot_w1.a00")
+    )
+    np.asarray(xtot_w2, dtype=np.float32).tofile(
+        os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_tot_w2.a00")
+    )
+    np.asarray(xtot_w3, dtype=np.float32).tofile(
+        os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_tot_w3.a00")
+    )
+
+def run_simind_for_organ_cores(
+    simind_exe,
+    spect_sim_file_prefix,
+    organ_name,
+    simind_switches,
+    output_path,
+    num_cores,
+):
+    """
+    Launch SIMIND for one organ across all CPU cores and wait for completion.
+    """
+    processes = []
+    for j in range(num_cores):
+        simind_command = (
+            f"{simind_exe} {spect_sim_file_prefix} {spect_sim_file_prefix}_{organ_name}_{j} "
+        )
+        command = simind_command + simind_switches + f"/rr:{j}"  # /rr:{j} : random seed
+
+        if j == 0:
+            p = subprocess.Popen(
+                command,
+                shell=True,
+                cwd=output_path,
+            )
+        else:
+            p = subprocess.Popen(
+                command,
+                shell=True,
+                cwd=output_path,
+                stdout=subprocess.DEVNULL,
+            )
+        processes.append(p)
+
+    for p in processes:
+        p.wait()
+
 
 def run_simind(current_dir_path, config, context):
     
@@ -79,7 +221,6 @@ def run_simind(current_dir_path, config, context):
         ratio_activity_organ = (ActivityOrganSum[organ_name][0] / ActivityMapSum[0])
         scale_factor = (num_photons * ratio_activity_organ / ActivityMapSum[0] / num_cores)
     
-        
         # Copy activity map into SIMIND working directory
         act_name = os.path.basename(act_path)
         shutil.copyfile(act_path, os.path.join(output_path, act_name))
@@ -109,163 +250,18 @@ def run_simind(current_dir_path, config, context):
         )
 
         # Launch SIMIND for this organ in parallel over num_cores
-        processes = []
-        for j in range(num_cores):
-            simind_command = (
-                f"{simind_exe} {spect_sim_file_prefix} {spect_sim_file_prefix}_{organ_name}_{j} "
-            )
-            command = simind_command + simind_switches + f"/rr:{j}"  # /rr:{j} : random seed
-
-            if j == 0:
-                p = subprocess.Popen(
-                    command,
-                    shell=True,
-                    cwd=output_path,
-                )
-            else:
-                p = subprocess.Popen(
-                    command,
-                    shell=True,
-                    cwd=output_path,
-                    stdout=subprocess.DEVNULL,
-                )
-            processes.append(p)
-
-        for p in processes:
-            p.wait()
+        run_simind_for_organ_cores(simind_exe, spect_sim_file_prefix, organ_name,
+                                simind_switches, output_path, num_cores)
 
         # Combine core-wise results into a single set of TOT files for this organ
-        xtot_w1 = 0
-        xtot_w2 = 0
-        xtot_w3 = 0
-
-        for j in range(num_cores):
-            w1 = np.fromfile(
-                os.path.join(
-                    output_path,
-                    f"{spect_sim_file_prefix}_{organ_name}_{j}_tot_w1.a00",
-                ),
-                dtype=np.float32,
-            )
-            w2 = np.fromfile(
-                os.path.join(
-                    output_path,
-                    f"{spect_sim_file_prefix}_{organ_name}_{j}_tot_w2.a00",
-                ),
-                dtype=np.float32,
-            )
-            w3 = np.fromfile(
-                os.path.join(
-                    output_path,
-                    f"{spect_sim_file_prefix}_{organ_name}_{j}_tot_w3.a00",
-                ),
-                dtype=np.float32,
-            )
-
-            xtot_w1 += w1
-            xtot_w2 += w2
-            xtot_w3 += w3
-
-        xtot_w1 /= num_cores
-        xtot_w2 /= num_cores
-        xtot_w3 /= num_cores
-
-        np.asarray(xtot_w1, dtype=np.float32).tofile(
-            os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_tot_w1.a00")
-        )
-        np.asarray(xtot_w2, dtype=np.float32).tofile(
-            os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_tot_w2.a00")
-        )
-        np.asarray(xtot_w3, dtype=np.float32).tofile(
-            os.path.join(output_path, f"{spect_sim_file_prefix}_{organ_name}_tot_w3.a00")
-        )
+        aggregate_core_totals_for_organ(output_path, spect_sim_file_prefix, organ_name, num_cores)
 
     # --- Frame-wise combination across organs ---
-    for frame_index, frame_start_time in enumerate(frame_start):
-        xtot_w1 = 0
-        xtot_w2 = 0
-        xtot_w3 = 0
-
-        for organ in roi_list:
-            w1 = np.fromfile(
-                os.path.join(
-                    output_path,
-                    f"{spect_sim_file_prefix}_{organ}_tot_w1.a00",
-                ),
-                dtype=np.float32,
-            )
-            w2 = np.fromfile(
-                os.path.join(
-                    output_path,
-                    f"{spect_sim_file_prefix}_{organ}_tot_w2.a00",
-                ),
-                dtype=np.float32,
-            )
-            w3 = np.fromfile(
-                os.path.join(
-                    output_path,
-                    f"{spect_sim_file_prefix}_{organ}_tot_w3.a00",
-                ),
-                dtype=np.float32,
-            )
-
-            xtot_w1 += (
-                w1
-                * ActivityOrganSum[organ][frame_index]
-                * frame_durations[frame_index]
-            )
-            xtot_w2 += (
-                w2
-                * ActivityOrganSum[organ][frame_index]
-                * frame_durations[frame_index]
-            )
-            xtot_w3 += (
-                w3
-                * ActivityOrganSum[organ][frame_index]
-                * frame_durations[frame_index]
-            )
-
-        np.asarray(xtot_w1, dtype=np.float32).tofile(
-            os.path.join(
-                output_path,
-                f"{spect_sim_file_prefix}_{frame_start_time}min_tot_w1.a00",
-            )
-        )
-        np.asarray(xtot_w2, dtype=np.float32).tofile(
-            os.path.join(
-                output_path,
-                f"{spect_sim_file_prefix}_{frame_start_time}min_tot_w2.a00",
-            )
-        )
-        np.asarray(xtot_w3, dtype=np.float32).tofile(
-            os.path.join(
-                output_path,
-                f"{spect_sim_file_prefix}_{frame_start_time}min_tot_w3.a00",
-            )
-        )
+    combine_organs_into_frame_totals(output_path, spect_sim_file_prefix, roi_list,
+                                    frame_start, frame_durations, ActivityOrganSum)
 
     # --- Calibration (Jaszczak phantom) ---
-    jaszak_file = os.path.join(current_dir_path, "bin", "jaszak.smc")
-    jaszak_file_out = os.path.join(output_path, "jaszak.smc")
-    shutil.copyfile(jaszak_file, jaszak_file_out)
-
-    calibration_command = (
-        f"{simind_exe} jaszak calib"
-        f"/fi:{isotope}"
-        f"/cc:{collimator}"
-        f"/29:1"
-        f"/15:5"
-        f"/fa:11"
-        f"/fa:15"
-        f"/fa:14"
-    )
-
-    subprocess.run(
-        calibration_command,
-        shell=True,
-        cwd=output_path,
-        stdout=subprocess.DEVNULL,
-    )
+    run_jaszczak_calibration(current_dir_path, output_path, simind_exe, isotope, collimator)
 
 
     return context

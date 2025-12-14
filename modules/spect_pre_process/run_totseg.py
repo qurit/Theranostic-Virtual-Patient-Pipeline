@@ -62,21 +62,11 @@ def run_totseg(config,context):
     roi_seg_path = os.path.join(output_path, f"{preprocess_file_prefix}_roi_seg.nii.gz")
     body_seg_path = os.path.join(output_path, f"{preprocess_file_prefix}_body_seg.nii.gz")
 
-    totalsegmentator(
-        ct_nii_path, 
-        roi_seg_path, 
-        device=device,
-        ml=ml,
-        roi_subset=roi_subset
-    )
+    totalsegmentator(ct_nii_path, roi_seg_path, device=device, 
+                     ml=ml, roi_subset=roi_subset)
 
     # Run body segmentation as a separate task
-    totalsegmentator(
-        ct_nii_path,
-        body_seg_path,
-        device=device,
-        task="body"
-    )
+    totalsegmentator(ct_nii_path, body_seg_path, device=device, task="body")
 
     # Update context
     context.roi_seg_path = roi_seg_path

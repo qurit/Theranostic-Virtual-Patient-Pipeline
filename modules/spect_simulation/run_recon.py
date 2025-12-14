@@ -74,8 +74,8 @@ def convert_counts_to_mbq_per_ml(reconstructed_image, sensitivity, frame_duratio
         )
     return recon_img_arr
     
-def get_recon_img(recon_img_arr, output_tuple, likelihood, iterations, subsets,
-                    sensitivity, frame_duration, output_pixel_width, output_slice_width):
+def get_recon_img(output_tuple, likelihood, iterations, subsets,
+                sensitivity, frame_duration, output_pixel_width, output_slice_width):
     
     recon_algorithm = OSEM(likelihood)
     reconstructed_image = recon_algorithm(
@@ -95,6 +95,13 @@ def get_recon_img(recon_img_arr, output_tuple, likelihood, iterations, subsets,
     recon_img.SetSpacing(output_tuple)
     return recon_img
 
+
+def get_recon_atn_img(output_tuple, output_path, spect_sim_file_prefix, amap):
+    recon_atn_img = sitk.GetImageFromArray(amap.cpu().T)
+    recon_atn_img.SetSpacing(output_tuple)
+    recon_atn_path = os.path.join(output_path, f"{spect_sim_file_prefix}_atn_img.nii")
+    sitk.WriteImage(recon_atn_img, recon_atn_path, imageIO="NiftiImageIO")
+    return recon_atn_img, recon_atn_path
 
 def run_recon(config, context):
 
@@ -200,18 +207,27 @@ def run_recon(config, context):
 
         recon_output_path = os.path.join( output_path,
                                          f"{spect_sim_file_prefix}_{time}min.nii")
-        recon_img = get_recon_img(
-            recon_img_arr, output_tuple, likelihood, iterations, subsets,
-            sensitivity, frame_duration, output_pixel_width, output_slice_width)
+        recon_img = get_recon_img(output_tuple, likelihood, iterations, subsets, 
+                                  sensitivity, frame_duration, output_pixel_width, output_slice_width)
         
         sitk.WriteImage(recon_img, recon_output_path, imageIO="NiftiImageIO")
 
 
 
     # Save attenuation image as NIfTI (same spacing as reconstruction)
-    atn_img = sitk.GetImageFromArray(amap.cpu().T)
-    atn_img.SetSpacing(output_tuple)
-    atn_path = os.path.join(output_path, f"{spect_sim_file_prefix}_atn_img.nii")
-    sitk.WriteImage(atn_img, atn_path, imageIO="NiftiImageIO")
+    recon_atn_img, recon_atn_path = get_recon_atn_img(
+        output_tuple, output_path, spect_sim_file_prefix, amap)
+    
+    # Update context
+    context.spect_sim_output_dir = output_path
+    context.recon_paths = [
+        os.path.join(
+            output_path,
+            f"{spect_sim_file_prefix}_{time}min.nii",
+        )
+        for time in frame_start
+    ]
+    context.recon_atn_img = recon_atn_img
+    context.recon_atn_path = recon_atn_path
 
     return context

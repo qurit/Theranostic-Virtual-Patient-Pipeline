@@ -1,9 +1,9 @@
 {
     "ct_input": { // Input CT scan parameters
-        "path1": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/CT"
+        "path1": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/inputs/CT"
     },
     "output_folder": {
-        "title": "TDT_Output_classes_test3"
+        "title": "TDT_Output_classes_test4"
     },
     "subdir_names": { // Output directory names (one for each module)///
         "spect_preprocessing": "spect_preprocessing_outputs",

@@ -8,8 +8,7 @@
     "subdir_names": { // Output directory names (one for each module)///
         "spect_preprocessing": "spect_preprocessing_outputs",
         "pbpk": "pbpk_outputs",
-        "spect_simulation": "spect_simulation_outputs",
-        "spect_postprocessing_outputs": "spect_postprocessing_outputs"
+        "spect_simulation": "spect_simulation_outputs"
     },
     "spect_preprocessing": { // preprocessing parameters
         "name" : "spect_preprocessing", // File name prefix

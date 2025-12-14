@@ -4,12 +4,12 @@ from json_minify import json_minify
 
 from context import Context
 
-from modules.spect_pre_process.segmentation_stage import TotalSegmentationStage
-from modules.spect_pre_process.preprocessing_stage import SimindPreprocessStage
+from stages.spect_pre_process.segmentation_stage import TotalSegmentationStage
+from stages.spect_pre_process.preprocessing_stage import SimindPreprocessStage
 
-from modules.pbpk.pbpk_stage import PbpkStage
-from modules.spect_simulation.simind_stage import SimindSimulationStage
-from modules.spect_simulation.reconstruction_stage import SpectReconstructionStage
+from stages.pbpk.pbpk_stage import PbpkStage
+from stages.spect_simulation.simind_stage import SimindSimulationStage
+from stages.spect_simulation.reconstruction_stage import SpectReconstructionStage
 
 
 class TdtPipeline:
@@ -35,43 +35,51 @@ class TdtPipeline:
             os.makedirs(subdir_path, exist_ok=True)
 
     def run(self):
+        print("Loading TDT Pipeline configuration and setting up context manager...")
         context = Context()
-
+        print("Starting TDT Pipeline...")
         # -----------------------------
         # Stage 1: TotalSegmentator
         # -----------------------------
+        print("Running TotalSegmentator Stage...")
         context = TotalSegmentationStage(self.config, context).run()
-
+        print("TotalSegmentator Stage completed.")
         # -----------------------------
         # Stage 2: Preprocess for SIMIND
         # -----------------------------
+        print("Running SIMIND Preprocessing Stage...")
         context = SimindPreprocessStage(self.config, context).run()
+        print("SIMIND Preprocessing Stage completed.")
 
         # -----------------------------
-        # Stage 3: PBPK (function for now)
+        # Stage 3: PBPK 
         # -----------------------------
+        print("Running PBPK Stage...")
         context = PbpkStage(self.config, context).run()
+        print("PBPK Stage completed.")
 
         # -----------------------------
-        # Stage 4: SIMIND (function for now)
+        # Stage 4: SIMIND 
         # -----------------------------
+        print("Running SIMIND Simulation Stage...")
         context = SimindSimulationStage(self.current_dir_path, self.config, context).run()
-
+        print("SIMIND Simulation Stage completed.")
+        
         # -----------------------------
-        # Stage 5: Recon (function for now)
+        # Stage 5: Recon 
         # -----------------------------
+        print("Running SPECT Reconstruction Stage...")
         context = SpectReconstructionStage(self.config, context).run()
+        print("SPECT Reconstruction Stage completed.")
 
-        # -----------------------------
-        # Stage 6: Post-process (optional)
-        # -----------------------------
-        # context = resample_spect_to_atn_grid(self.config, context)
-
+        print("TDT Pipeline completed successfully.")
+        
+        print("printing context for debugging...")
         print(context)
         return context
 
 
 if __name__ == "__main__":
-    config_path = "setup/config.json"
+    config_path = "inputs/config.json"
     pipeline1 = TdtPipeline(config_path)
     pipeline1.run()

@@ -1,233 +1,209 @@
-"""
-PBPK modelling utilities for the TDT pipeline.
-
-This module uses the `pycno` PSMA model to generate time–activity curves (TACs)
-for a set of physiologically based pharmacokinetic (PBPK) volumes of interest
-(VOIs), and then maps those TACs into voxel-wise activity distributions based
-on the segmented CT volume.
-
-The main entry point is `run_pbpk`, which:
-
-- Runs the PSMA PBPK model via `pycno.run_model`.
-- Interpolates TACs at the requested frame start times.
-- Builds a 4D activity map (time, z, y, x) over the entire volume.
-- Saves per-organ and per-frame activity maps as binary files.
-- Saves TAC time-series and sampled values as binary files for each VOI.
-"""
-
-import logging
 import os
-
 import numpy as np
 import pycno
 
-logger = logging.getLogger(__name__)
+def get_pbpk_output_path(config):
+    subdir_name = config["subdir_names"]["pbpk"]
+    output_root = config["output_folder"]["title"]
+    output_path = os.path.join(output_root, subdir_name)
+    os.makedirs(output_path, exist_ok=True)
+
+    pbpk_file_prefix = config["pbpk"]["name"] 
+    return output_path, pbpk_file_prefix
 
 
-def run_pbpk(out_path, pbpk_para, seg_plus_body_arr, masks, class_seg, ct_get_zoom):
+
+def class_seg_background_remove(class_seg):
+    # Remove background class so only real organs/regions are iterated over. 
+    if "Background" in class_seg: 
+        del class_seg["Background"] 
+    return class_seg
+
+def get_voxel_volume_ml(arr_px_spacing_cm):
+    arr_px_spacing_cm = np.asarray(arr_px_spacing_cm, dtype=float)
+    voxel_vol_ml = float(np.prod(arr_px_spacing_cm))  # cm^3 == mL
+    return voxel_vol_ml
+
+
+def run_psma_model(config):
     """
-    Run the PSMA PBPK model and generate voxel-wise activity maps.
-
-    Parameters
-    ----------
-    out_path : str
-        Directory where PBPK-related output files (activity maps, TAC binaries)
-        will be written.
-    pbpk_para : dict
-        PBPK configuration parameters. Expected keys include:
-            - "name" : str
-            - "FrameStartTimes" : list[float]
-            (Other keys like HotTotalAmount, ColdTotalAmount, LambdaPhys are
-             used by upstream configuration/model setup.)
-    seg_plus_body_arr : numpy.ndarray
-        3D segmentation array (z, y, x) containing combined ROI+body labels.
-        Used only for shape; the masks argument encodes region locations.
-    masks : dict
-        Dictionary mapping integer label values (from `class_seg`) to boolean
-        masks (same shape as `seg_plus_body_arr`) indicating voxels belonging
-        to each region.
-    class_seg : dict
-        Mapping from region names (e.g. "liver", "kidney") to integer label
-        values used in `seg_plus_body_arr` and `masks`. The key "Background"
-        is removed inside this function.
-    ct_get_zoom : tuple of float
-        Voxel spacing in mm (x, y, z) after any preprocessing scaling. Used to
-        convert voxel counts to volume (mL).
-
-    Returns
-    -------
-    ActivityMapSum : numpy.ndarray
-        1D array of length N_frames with total activity (MBq) per frame summed
-        over the whole volume.
-    ActivityOrganSum : dict
-        Mapping from organ name to a 1D array of length N_frames with total
-        activity (MBq) per frame for that organ.
-    act_path_all_organ : list of str
-        List of filesystem paths to per-organ activity map binaries
-        (one file per organ, currently storing only the first frame).
-    act_path_all_map : list of str
-        List of filesystem paths to per-frame whole-volume activity map
-        binaries (one file per frame).
+    Run the PyCNO PSMA PBPK model and return:
+    - list of VOIs
+    - frame start times
+    - model time grid
+    - TAC array
     """
-    pbpk_name = pbpk_para["name"]
+    vois_pbpk = config["pbpk"]["VOIs"]  # e.g. ["Kidney", "Liver", "Rest", ...]
+    frame_start = config["pbpk"]["FrameStartTimes"]  # [min] # [min]
+    frame_stop = max(frame_start)
 
-    act_path_all_map = []
-    act_path_all_organ = []
-    ActivityOrganSum = {}
+    time, TACs = pycno.run_model(
+        model_name="PSMA",
+        stop=frame_stop,
+        observables=vois_pbpk,
+    )
+    # TACs shape often (1, n_time, n_vois)
+    return vois_pbpk, frame_start, time, TACs
 
-    # Remove background class so only real organs/regions are iterated over.
-    if "Background" in class_seg:
-        del class_seg["Background"]
 
-    vois_possible = [
-        "Tumor1",
-        "Tumor2",
-        "Kidney",
-        "Heart",
-        "SG",
-        "Bone",
-        "TumorRest",
-        "Spleen",
-        "Liver",
-        "Prostate",
-        "GI",
-        "Rest",
-        "Skin",
-        "Muscle",
-        "Brain",
-        "RedMarrow",
-        "Lungs",
-        "Adipose",
-    ]
-
+def organ_roi_to_voi_name(roi_name):
     roi_to_voi = {
-        # "NA": "Tumor1",
-        # "NA": "Tumor2",
         "kidney": "Kidney",
-        "heart": "Heart",
         "body": "Rest",
-        # "SG": "SG",
-        # "Bone": "Bone",
-        # "TumorRest": "TumorRest",
-        "spleen": "Spleen",
         "liver": "Liver",
         "prostate": "Prostate",
-        # "GI": "GI",
-        # "Rest": "Rest",
-        # "Skin": "Skin",
-        # "Muscle": "Muscle",
-        "brain": "Brain",
-        # "RedMarrow": "RedMarrow",
-        # "lungs": "Lungs",
-        # "Adipose": "Adipose",
     }
+    return roi_to_voi.get(roi_name)
 
-    n_frames = len(pbpk_para["FrameStartTimes"])
-    ActivityMap = np.zeros(
-        (n_frames, *seg_plus_body_arr.shape),
+
+def compute_organ_activity_map(roi_name, label_value, mask_roi_body, roi_body_seg_arr, vois_pbpk,
+                               frame_start, time, TACs, voxel_vol_ml, output_path, pbpk_file_prefix):
+    
+    # Map ROI (segmentation name) -> PBPK VOI
+    voi_name = organ_roi_to_voi_name(roi_name)
+
+    if voi_name not in vois_pbpk:
+        # If VOI isn't in the model observables, treat as 'Rest' (or raise)
+        voi_name = "Rest"
+
+    voi_index = vois_pbpk.index(voi_name)
+
+    n_frames = len(frame_start)
+
+    # Number of voxels in this ROI
+    mask = mask_roi_body[label_value]
+    mask_len_roi = np.sum(mask)
+
+    # TAC for this VOI over the model grid (time steps)
+    tac_voi = TACs[0, :, voi_index]
+
+    # Interpolate TAC at the desired frame start times
+    tac_voi_interp_time = np.interp(frame_start, time, tac_voi)
+
+    # Activity map for this organ: [frame, z, y, x]
+    ActivityMap_Organ = np.zeros(
+        (n_frames, *roi_body_seg_arr.shape),
         dtype=np.float32,
     )
 
-    # Convert voxel sizes (mm) to volume (mL = cm^3)
-    pixel_spacing_ml = np.prod(ct_get_zoom) * 0.1**3  # mm^3 * 0.001 -> mL
-
-    # Run PBPK model
-    time, TACs = pycno.run_model(
-        model_name="PSMA",
-        stop=max(pbpk_para["FrameStartTimes"]),
-        observables=vois_possible,
+    # Voxel-wise activity [MBq/mL]
+    # activity_per_voxel = activity_per_voi / (num_voxels * voxel_volume)
+    ActivityMap_Organ[:, mask] = (
+        tac_voi_interp_time[:, None] / (mask_len_roi * voxel_vol_ml)
     )
 
-    logger.debug("PBPK TACs generated successfully. TAC shape: %s", TACs.shape)
+    # Save organ-specific activity map (currently only the first frame)
+    ActivityMap_Organ_path = os.path.join(
+        output_path,
+        f"{pbpk_file_prefix}_{roi_name}_act_av.bin",
+    )
+    ActivityMap_Organ[0].astype(np.float32).tofile(ActivityMap_Organ_path)
 
-    frame_start = np.asarray(pbpk_para["FrameStartTimes"], float)
+    # Summed activity per frame for this organ [MBq]
+    ActivityOrganSum = (
+        np.sum(ActivityMap_Organ, axis=(1, 2, 3)) * voxel_vol_ml
+    )
 
-    # Populate ActivityMap for each organ/region
-    for key, value in class_seg.items():
-        if key in roi_to_voi:
-            voi = roi_to_voi[key]
-        else:
-            voi = "Rest"
+    # --- Save TAC time-series and sampled TACs ---
+    tac_time_f = os.path.join(
+        output_path,
+        f"{pbpk_file_prefix}_{voi_name}_TAC_time.bin",
+    )
+    tac_values_f = os.path.join(
+        output_path,
+        f"{pbpk_file_prefix}_{voi_name}_TAC_values.bin",
+    )
+    samp_time_f = os.path.join(
+        output_path,
+        f"{pbpk_file_prefix}_{voi_name}_sample_times.bin",
+    )
+    samp_values_f = os.path.join(
+        output_path,
+        f"{pbpk_file_prefix}_{voi_name}_sample_values.bin",
+    )
 
-        voi_index = vois_possible.index(voi)
+    np.asarray(time, dtype=np.float32).tofile(tac_time_f)
+    np.asarray(tac_voi, dtype=np.float32).tofile(tac_values_f)
 
-        # Number of voxels in this ROI
-        mask_len_roi = np.sum(masks[value])
+    np.asarray(frame_start, dtype=np.float32).tofile(samp_time_f)
+    np.asarray(tac_voi_interp_time, dtype=np.float32).tofile(samp_values_f)
 
-        # TAC for this VOI over the model grid (time steps)
-        tac_voi = TACs[0, :, voi_index]
+    tac_paths = {
+        "tac_time": tac_time_f,
+        "tac_values": tac_values_f,
+        "sample_time": samp_time_f,
+        "sample_values": samp_values_f,
+    }
 
-        # Interpolate TAC at the desired frame start times
-        tac_voi_interp_time = np.interp(frame_start, time, tac_voi)
+    return ActivityMap_Organ, ActivityOrganSum, ActivityMap_Organ_path, tac_paths
 
-        # Create an organ-specific activity map: [frame, z, y, x]
-        ActivityMap_Organ = np.zeros(
-            (n_frames, *seg_plus_body_arr.shape),
-            dtype=np.float32,
+
+def run_pbpk(config, context):
+    # Output path and naming
+    output_path, pbpk_file_prefix = get_pbpk_output_path(config)
+
+    # Geometry / mask info from previous stage
+    roi_body_seg_arr = context.roi_body_seg_arr
+    mask_roi_body = context.mask_roi_body
+    class_seg = class_seg_background_remove(context.class_seg)
+    arr_px_spacing_cm = context.arr_px_spacing_cm
+
+    voxel_vol_ml = get_voxel_volume_ml(arr_px_spacing_cm)
+
+    # PBPK model
+    vois_pbpk, frame_start, time, TACs = run_psma_model(config)
+    n_frames = len(frame_start)
+
+    # Empty sets for outputs
+    ActivityMap = np.zeros(
+        (n_frames, *roi_body_seg_arr.shape),
+        dtype=np.float32,
+    )
+    ActivityOrganSum = {}
+    act_path_all_organ = []
+    act_path_all_map = []
+
+    
+    for roi_name, label_value in class_seg.items(): # Loop over each ROI class (e.g. 'kidney', 'liver', 'body', ...)
+
+        ActivityMap_Organ, organ_sum, organ_map_path, _tac_paths = compute_organ_activity_map(
+            roi_name=roi_name,
+            label_value=label_value,
+            mask_roi_body=mask_roi_body,
+            roi_body_seg_arr=roi_body_seg_arr,
+            vois_pbpk=vois_pbpk,
+            frame_start=frame_start,
+            time=time,
+            TACs=TACs,
+            voxel_vol_ml=voxel_vol_ml,
+            output_path=output_path,
+            pbpk_file_prefix=pbpk_file_prefix,
         )
 
-        # Voxel-wise activity [MBq/mL]:
-        # activity_per_voxel = activity_per_voi / (num_voxels * voxel_volume)
-        ActivityMap_Organ[:, masks[value]] = (
-            tac_voi_interp_time[:, None] / (mask_len_roi * pixel_spacing_ml)
-        )
+        # Insert this organ's activity into the global ActivityMap
+        mask = mask_roi_body[label_value]
+        ActivityMap[:, mask] = ActivityMap_Organ[:, mask]
 
-        # Save organ-specific activity map (currently only the first frame)
-        ActivityMap_Organ_path = os.path.join(
-            out_path,
-            f"{pbpk_name}_{key}_act_av.bin",
-        )
-        ActivityMap_Organ[0].astype(np.float32).tofile(ActivityMap_Organ_path)
-        act_path_all_organ.append(ActivityMap_Organ_path)
-
-        # Summed activity per frame for this organ [MBq]
-        ActivityOrganSum[key] = (
-            np.sum(ActivityMap_Organ, axis=(1, 2, 3)) * pixel_spacing_ml
-        )
-
-        # Fill the global ActivityMap with this organ's activity
-        ActivityMap[:, masks[value]] = ActivityMap_Organ[:, masks[value]]
-
-        # --- Save TAC time-series to .bin files (float32), no plotting ---
-        tac_time_f = os.path.join(out_path, f"{pbpk_name}_{voi}_TAC_time.bin")
-        tac_values_f = os.path.join(out_path, f"{pbpk_name}_{voi}_TAC_values.bin")
-        samp_time_f = os.path.join(out_path, f"{pbpk_name}_{voi}_sample_times.bin")
-        samp_values_f = os.path.join(
-            out_path,
-            f"{pbpk_name}_{voi}_sample_values.bin",
-        )
-
-        # Full model grid (time vs TAC)
-        np.asarray(time, dtype=np.float32).tofile(tac_time_f)
-        np.asarray(TACs[0, :, voi_index], dtype=np.float32).tofile(tac_values_f)
-
-        # Sampled at frame times
-        np.asarray(frame_start, dtype=np.float32).tofile(samp_time_f)
-        np.asarray(tac_voi_interp_time, dtype=np.float32).tofile(samp_values_f)
-
-        logger.debug(
-            "[PBPK] Saved TAC for VOI %s: %s, %s, %s, %s",
-            voi,
-            os.path.basename(tac_time_f),
-            os.path.basename(tac_values_f),
-            os.path.basename(samp_time_f),
-            os.path.basename(samp_values_f),
-        )
+        ActivityOrganSum[roi_name] = organ_sum
+        act_path_all_organ.append(organ_map_path)
 
     # Total activity per frame [MBq] across whole volume
-    ActivityMapSum = np.sum(ActivityMap, axis=(1, 2, 3)) * pixel_spacing_ml
-
-    logger.debug("ActivityMap shape: %s", ActivityMap.shape)
-    logger.debug("ActivityMap total activity per frame (MBq): %s", ActivityMapSum)
+    ActivityMapSum = np.sum(ActivityMap, axis=(1, 2, 3)) * voxel_vol_ml
 
     # Save full-frame activity maps (one file per frame)
     for i, frame in enumerate(ActivityMap):
+        frame_start_time = config["pbpk"]["FrameStartTimes"][i]
         act_path_single = os.path.join(
-            out_path,
-            f'{pbpk_name}_{pbpk_para["FrameStartTimes"][i]}_act_av.bin',
+            output_path,
+            f"{pbpk_file_prefix}_{frame_start_time}_act_av.bin",
         )
-        act_path_all_map.append(act_path_single)
         frame.astype(np.float32).tofile(act_path_single)
+        act_path_all_map.append(act_path_single)
 
-    return ActivityMapSum, ActivityOrganSum, act_path_all_organ, act_path_all_map
+    # --- Update context ---
+    context.ActivityMapSum = ActivityMapSum
+    context.ActivityOrganSum = ActivityOrganSum
+    context.act_path_all_organ = act_path_all_organ
+    context.act_path_all_map = act_path_all_map
 
+    return context

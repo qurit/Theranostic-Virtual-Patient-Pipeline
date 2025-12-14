@@ -21,7 +21,7 @@ import os
 
 import setup.init as setup
 
-from modules.spect_pre_process.ct_seg_preprocessing import preprocess_ct_and_seg_for_simind
+from modules.spect_pre_process.data_preprocessing import preprocess_ct_and_seg_for_simind
 from modules.spect_post_process.image_analysis import resample_spect_to_atn_grid
 from modules.spect_pre_process.run_totseg import run_totseg
 from modules.pbpk.run_pbpk import run_pbpk
@@ -178,7 +178,7 @@ def tdt_ct_to_spect(ct_input_path, patient_num):
     stage_name = "SPECT simulation"
     print(f"[MAIN] Stage 4/5: {stage_name}...")
     logger.info("Stage 4/5: %s - started", stage_name)
-    """
+
     run_simind(
         current_dir,
         class_seg,
@@ -215,7 +215,7 @@ def tdt_ct_to_spect(ct_input_path, patient_num):
         class_seg,
         activity_map_sum,
     )
-    """
+
     recon_spect_path = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/Output_Folder_Testing_1/RECON_Outputs/RECON_frame0.nii"
     logger.info("Stage 5/5: %s - completed", stage_name)
     logger.info("Reconstructed SPECT image path: %s", recon_spect_path)

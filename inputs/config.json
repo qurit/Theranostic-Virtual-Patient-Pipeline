@@ -1,9 +1,12 @@
 {
+    "mode" : { // Mode can be "DEBUG" or "PRODUCTION"
+        "mode" : "DEBUG" 
+    },
     "ct_input": { // Input CT scan parameters
         "path1": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/inputs/CT"
     },
     "output_folder": {
-        "title": "TDT_Output_classes_test4"
+        "title": "TDT_Output_Validate_Classes" // Output folder name
     },
     "subdir_names": { // Output directory names (one for each module)///
         "spect_preprocessing": "spect_preprocessing_outputs",
@@ -18,8 +21,8 @@
         "resize": 256 // x and y dimensions for resizing for SIMIND input
     },
     "total_segmentator_classes": {
-        "200": "kidney", // added myself for total segmentator
-        "201": "body", // added myself for total segmentator
+        "100": "kidney", // added myself for total segmentator
+        "200": "body", // added myself for total segmentator
         "1": "spleen",
         "2": "kidney_right",
         "3": "kidney_left",
@@ -126,7 +129,7 @@
         "Collimator": "si-me",  // SIMIND: Collimator type - refer to SIMIND documentation
         "Isotope": "lu177",    // SIMIND: Isotope type - refer to SIMIND documentation
         "NumProjections": 64,   // SIMIND: Number of projections (96 is standard)
-        "NumPhotons": 1e5,    // SIMIND: Number of photons
+        "NumPhotons": 1e8,    // SIMIND: Number of photons
         "DetectorDistance": 10, // SIMIND: Detector distance [cm]
         "OutputImgSize": 128,   // SIMIND: Output image dimensions
         "OutputPixelWidth": 0.5, // SIMIND: Output pixel size [cm]

@@ -1,6 +1,7 @@
 import os
 import json
 from json_minify import json_minify
+import logging
 
 from context import Context
 
@@ -17,6 +18,27 @@ class TdtPipeline:
         self.config_path = config_path
         self.current_dir_path = os.path.dirname(__file__)
         self.setup_config(config_path)
+        self.mode = self.config["mode"]["mode"]
+    
+    def _log_config_to_file(self):
+        '''
+        For now only saved Config, will add on more logging later on
+        '''
+        log_path = os.path.join(self.output_folder_path, "logging_file.log")
+
+        logger = logging.getLogger("TDT_CONFIG_LOGGER")
+        logger.setLevel(logging.INFO)
+        logger.propagate = False  # prevent duplicate output if root logger is set elsewhere
+        
+        # Avoid adding multiple handlers if pipeline is constructed multiple times
+        if not any(isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", "") == log_path for h in logger.handlers):
+            fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+            fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+            logger.addHandler(fh)
+            
+        config = json.dumps(self.config, indent=2, sort_keys=True)
+        logger.info("CONFIG SOURCE: %s", os.path.abspath(self.config_path))
+        logger.info("CONFIG CONTENTS:\n%s", config)
 
     def setup_config(self, config_path):
         if not os.path.exists(config_path):
@@ -28,29 +50,35 @@ class TdtPipeline:
         output_folder_title = self.config["output_folder"]["title"]
         output_folder_path = os.path.join(self.current_dir_path, output_folder_title)
         os.makedirs(output_folder_path, exist_ok=True)
+        
+        self.output_folder_path = output_folder_path
 
         subdir_dict = self.config["subdir_names"]
         for _, name in subdir_dict.items():
             subdir_path = os.path.join(output_folder_path, name)
             os.makedirs(subdir_path, exist_ok=True)
+        
+        self._log_config_to_file()
 
     def run(self):
         print("Loading TDT Pipeline configuration and setting up context manager...")
         context = Context()
-        print("Starting TDT Pipeline...")
+        print("Starting TDT Pipeline in mode:", self.mode) # TODO: mode will be used later, determine what gets saved
+        
         # -----------------------------
         # Stage 1: TotalSegmentator
         # -----------------------------
         print("Running TotalSegmentator Stage...")
         context = TotalSegmentationStage(self.config, context).run()
         print("TotalSegmentator Stage completed.")
+        
         # -----------------------------
         # Stage 2: Preprocess for SIMIND
         # -----------------------------
         print("Running SIMIND Preprocessing Stage...")
         context = SimindPreprocessStage(self.config, context).run()
         print("SIMIND Preprocessing Stage completed.")
-
+        
         # -----------------------------
         # Stage 3: PBPK 
         # -----------------------------
@@ -73,9 +101,6 @@ class TdtPipeline:
         print("SPECT Reconstruction Stage completed.")
 
         print("TDT Pipeline completed successfully.")
-        
-        print("printing context for debugging...")
-        print(context)
         return context
 
 

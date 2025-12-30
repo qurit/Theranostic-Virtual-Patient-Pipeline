@@ -1,0 +1,43 @@
+!INTERFILE :=
+!imaging modality := nucmed
+;# imaging modality 2 := EMS
+!originating system := simind
+!version of keys := 3.3
+program author := M Ljungberg, Lund University
+program version := V8.0
+  
+!GENERAL DATA :=
+original institution := Medical Radiation Physics
+contact person := M Ljungberg
+!data offset in bytes := 0
+!name of data file := spect_simulation_body_87.ict
+patient name := SMC_spect_simulation_body_87.a00
+!study ID := Aligned CT Map
+exam type := CT DATA
+!patient ID := SIMIND
+  
+!GENERAL IMAGE DATA :=
+!type of data := tomographic
+study date := 2025:12:19
+study time := 15:25:06
+imagedata byte order := LITTLEENDIAN
+!total number of images := 223
+  
+!SPECT STUDY (General) :=
+!matrix size [1] := 128
+!matrix size [2] := 128
+!matrix size [3] := 223
+scaling factor (mm/pixel) [1] := 5.000000
+scaling factor (mm/pixel) [2] := 5.000000
+scaling factor (mm/pixel) [3] := 5.000000
+;# Image Position First image := -320.0000 -320.0000 557.500000
+;# Image Orientation := 1.0 0.0 0.0 0.0 1.0 0.0
+!number of images/energy window := 223
+;# CT Images interpolated to ECT Images := 1
+;# CT Spacing between slices := 5.000000
+!process status := reconstructed
+!number of bytes per pixel := 4
+!number format := short float
+;# Units of data (ECT) := mu
+  
+!END OF INTERFILE :=

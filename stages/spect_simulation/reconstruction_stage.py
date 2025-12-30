@@ -17,7 +17,7 @@ class SpectReconstructionStage:
         self.config = config
         self.context = context
 
-        # output_dir: where frame totals + calib.res are (clean dir)
+        # output_dir: where frame totals + calib.res are 
         self.output_dir = getattr(context, "spect_sim_output_dir", None)
         if self.output_dir is None:
             self.output_dir = context.extras.get("simind_output_dir", None)
@@ -137,9 +137,7 @@ class SpectReconstructionStage:
         self.context.require("class_seg")
 
         roi_list = list(self.context.class_seg.keys())
-        if len(roi_list) == 0:
-            raise ValueError("context.class_seg is empty. Reconstruction requires at least one ROI name.")
-
+        
         # sensitivity comes from output_dir (calibration runs in output_dir)
         calibration_file = os.path.join(self.output_dir, "calib.res")
         if not os.path.exists(calibration_file):

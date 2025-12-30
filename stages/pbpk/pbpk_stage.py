@@ -49,11 +49,13 @@ class PbpkStage:
         }
         return roi_to_voi.get(roi_name)
 
-    def _save_tac_files(self, voi_name, time, tac_voi, tac_interp):
-        tac_time_f = os.path.join(self.output_dir, f"{self.prefix}_{voi_name}_TAC_time.bin")
-        tac_vals_f = os.path.join(self.output_dir, f"{self.prefix}_{voi_name}_TAC_values.bin")
-        samp_time_f = os.path.join(self.output_dir, f"{self.prefix}_{voi_name}_sample_times.bin")
-        samp_vals_f = os.path.join(self.output_dir, f"{self.prefix}_{voi_name}_sample_values.bin")
+    def _save_tac_files(self, roi_name, time, tac_voi, tac_interp):
+        roi_tag = roi_name.lower()
+
+        tac_time_f = os.path.join(self.output_dir, f"{self.prefix}_{roi_tag}_TAC_time.bin")
+        tac_vals_f = os.path.join(self.output_dir, f"{self.prefix}_{roi_tag}_TAC_values.bin")
+        samp_time_f = os.path.join(self.output_dir, f"{self.prefix}_{roi_tag}_sample_times.bin")
+        samp_vals_f = os.path.join(self.output_dir, f"{self.prefix}_{roi_tag}_sample_values.bin")
 
         np.asarray(time, dtype=np.float32).tofile(tac_time_f)
         np.asarray(tac_voi, dtype=np.float32).tofile(tac_vals_f)
@@ -106,7 +108,7 @@ class PbpkStage:
         organ_sum = np.sum(activity_map_organ, axis=(1, 2, 3)) * voxel_vol_ml
 
         if voi_name not in saved_tacs:
-            saved_tacs[voi_name] = self._save_tac_files(voi_name, time, tac_voi, tac_interp)
+            saved_tacs[roi_name] = self._save_tac_files(roi_name, time, tac_voi, tac_interp)
 
         return activity_map_organ, organ_sum, organ_map_path
 
@@ -121,6 +123,9 @@ class PbpkStage:
         class_seg = self._remove_background(self.context.class_seg)
         voxel_vol_ml = self._voxel_volume_ml(self.context.arr_px_spacing_cm)
 
+        print("arr_px_spacing_cm:", self.context.arr_px_spacing_cm)
+        print("voxel_vol_ml:", voxel_vol_ml)
+        
         time, tacs = self._run_psma_model()
 
         n_frames = len(self.frame_start)
@@ -161,13 +166,13 @@ class PbpkStage:
             frame.astype(np.float32).tofile(p)
             frame_paths.append(p)
 
-        # Update context (snake_case)
+        # Update context 
         self.context.activity_map_sum = activity_map_sum
         self.context.activity_organ_sum = activity_organ_sum
         self.context.activity_map_paths_by_organ = organ_paths
         self.context.activity_map_paths_by_frame = frame_paths
 
-        # extras (nice-to-have)
+        # extras
         self.context.extras["pbpk_output_dir"] = self.output_dir
         self.context.extras["pbpk_saved_tacs"] = saved_tacs
 

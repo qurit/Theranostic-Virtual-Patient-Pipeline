@@ -71,7 +71,7 @@ class SimindPreprocessStage:
         mu_map.tofile(out_path)
         return out_path
 
-    def _combine_roi_and_body(self, roi_seg_arr, body_seg_arr, body_label=201):
+    def _combine_roi_and_body(self, roi_seg_arr, body_seg_arr, body_label=200):
         roi_mask = roi_seg_arr != 0
         body_mask = body_seg_arr > 0
 
@@ -96,9 +96,9 @@ class SimindPreprocessStage:
 
     @staticmethod
     def _merge_kidneys_if_needed(roi_subset, roi_seg_arr):
-        left_label = 3
-        right_label = 2
-        merged_label = 200
+        left_label = 3 # check config  - origin: tot seg
+        right_label = 2 # check config  - origin: tot seg
+        merged_label = 100 # check config - origin: user defined
 
         has_left = "kidney_left" in roi_subset
         has_right = "kidney_right" in roi_subset

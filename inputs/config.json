@@ -6,7 +6,7 @@
         "path1": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/inputs/CT"
     },
     "output_folder": {
-        "title": "TDT_Output_Validate_Classes" // Output folder name
+        "title": "TDT_Output_DEBUG" // Output folder name
     },
     "subdir_names": { // Output directory names (one for each module)///
         "spect_preprocessing": "spect_preprocessing_outputs",
@@ -119,8 +119,8 @@
         "HotTotalAmount": 7.5,  // Total amount of hot tracer [nmol]
         "ColdTotalAmount": 90,  // Total amount of cold tracer [nmol]
         "LambdaPhys": 7.15e-05, // Physical decay constant [1/min]
-        "FrameStartTimes": [240,1440,2880,5760],   // Start time of each frame [min] [240,1440,2880,5760]
-        "FrameDurations": [10,10,10,10], // Duration of each frame [seconds]
+        "FrameStartTimes": [240,1440],   // Start time of each frame [min] [240,1440,2880,5760]
+        "FrameDurations": [10,10], // Duration of each frame [seconds]
         "VOIs": ["Tumor1","Tumor2","Kidney","Heart","SG","Bone","TumorRest","Spleen","Liver","Prostate","GI","Rest","Skin","Muscle","Brain","RedMarrow","Lungs","Adipose"]
     },
     "spect_simulation": { // Spect simulation parameters
@@ -129,7 +129,7 @@
         "Collimator": "si-me",  // SIMIND: Collimator type - refer to SIMIND documentation
         "Isotope": "lu177",    // SIMIND: Isotope type - refer to SIMIND documentation
         "NumProjections": 64,   // SIMIND: Number of projections (96 is standard)
-        "NumPhotons": 1e8,    // SIMIND: Number of photons
+        "NumPhotons": 1e7,    // SIMIND: Number of photons
         "DetectorDistance": 10, // SIMIND: Detector distance [cm]
         "OutputImgSize": 128,   // SIMIND: Output image dimensions
         "OutputPixelWidth": 0.5, // SIMIND: Output pixel size [cm]

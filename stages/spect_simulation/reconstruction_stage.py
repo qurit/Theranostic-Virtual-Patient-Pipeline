@@ -36,7 +36,7 @@ class SpectReconstructionStage:
         self.prefix = config["spect_simulation"]["name"]
 
         self.frame_start = config["pbpk"]["FrameStartTimes"]
-        self.frame_duration = config["pbpk"]["FrameDurations"][0]
+        self.frame_durations = config["pbpk"]["FrameDurations"] # in seconds, len(frame_start)
 
         self.iterations = config["spect_simulation"]["Iterations"]
         self.subsets = config["spect_simulation"]["Subsets"]
@@ -92,14 +92,14 @@ class SpectReconstructionStage:
     def _convert_counts_to_mbq_per_ml(self, reconstructed_image, sensitivity, frame_duration,
                                      output_pixel_width, output_slice_width):
         return (
-            reconstructed_image.cpu().T
-            / sensitivity
-            / frame_duration
-            / (output_pixel_width ** 2)
-            / output_slice_width
-        )
+            reconstructed_image.cpu().T # counts
+            / sensitivity # counts / s / MBq
+            / frame_duration # sec
+            / (output_pixel_width ** 2) # cm^2
+            / output_slice_width # cm
+        ) # MBq / cm^3 = MBq / ml
 
-    def _get_recon_img(self, likelihood, sensitivity):
+    def _get_recon_img(self, likelihood, sensitivity, frame_duration):
         recon_algorithm = OSEM(likelihood)
         reconstructed_image = recon_algorithm(
             n_iters=self.iterations,
@@ -107,12 +107,12 @@ class SpectReconstructionStage:
         )
 
         recon_img_arr = self._convert_counts_to_mbq_per_ml(
-            reconstructed_image,
-            sensitivity,
-            self.frame_duration * 60,  # min -> sec
-            self.output_pixel_width,
-            self.output_slice_width,
-        )
+            reconstructed_image, 
+            sensitivity, 
+            frame_duration , 
+            self.output_pixel_width, 
+            self.output_slice_width, 
+        ) # MBq / ml
 
         recon_img = sitk.GetImageFromArray(recon_img_arr)
         recon_img.SetSpacing(self.output_tuple)
@@ -183,7 +183,7 @@ class SpectReconstructionStage:
         )
 
         recon_paths = []
-        for time in self.frame_start:
+        for time_index, time in enumerate(self.frame_start):
             recon_output_path = os.path.join(self.output_dir, f"{self.prefix}_{time}min.nii")
 
             if os.path.exists(recon_output_path):
@@ -236,7 +236,7 @@ class SpectReconstructionStage:
                 additive_term=scatter_estimate_tew,
             )
 
-            recon_img = self._get_recon_img(likelihood, sensitivity)
+            recon_img = self._get_recon_img(likelihood, sensitivity, self.frame_durations[time_index])
             sitk.WriteImage(recon_img, recon_output_path, imageIO="NiftiImageIO")
             recon_paths.append(recon_output_path)
 

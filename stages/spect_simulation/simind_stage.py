@@ -21,7 +21,7 @@ class SimindSimulationStage:
         self.prefix = config["spect_simulation"]["name"]
 
         self.frame_start = config["pbpk"]["FrameStartTimes"]
-        self.frame_durations = config["pbpk"]["FrameDurations"]
+        self.frame_durations = config["pbpk"]["FrameDurations"] # seconds, len(frame_start)
         self.collimator = config["spect_simulation"]["Collimator"]
         self.isotope = config["spect_simulation"]["Isotope"]
         self.num_projections = config["spect_simulation"]["NumProjections"]
@@ -84,7 +84,7 @@ class SimindSimulationStage:
         subprocess.run(cmd, shell=True, cwd=self.output_dir, stdout=subprocess.DEVNULL)
 
     def _combine_organs_into_frame_totals(self, roi_list, activity_organ_sum):
-        for frame_index, frame_start_time in enumerate(self.frame_start):
+        for time_index, time in enumerate(self.frame_start):
             xtot_w1 = 0
             xtot_w2 = 0
             xtot_w3 = 0
@@ -94,13 +94,13 @@ class SimindSimulationStage:
                 w2 = np.fromfile(os.path.join(self.output_dir, f"{self.prefix}_{organ}_tot_w2.a00"), dtype=np.float32)
                 w3 = np.fromfile(os.path.join(self.output_dir, f"{self.prefix}_{organ}_tot_w3.a00"), dtype=np.float32)
 
-                xtot_w1 += w1 * activity_organ_sum[organ][frame_index] * self.frame_durations[frame_index]
-                xtot_w2 += w2 * activity_organ_sum[organ][frame_index] * self.frame_durations[frame_index]
-                xtot_w3 += w3 * activity_organ_sum[organ][frame_index] * self.frame_durations[frame_index]
+                xtot_w1 += w1 * activity_organ_sum[organ][time_index] * self.frame_durations[time_index]
+                xtot_w2 += w2 * activity_organ_sum[organ][time_index] * self.frame_durations[time_index]
+                xtot_w3 += w3 * activity_organ_sum[organ][time_index] * self.frame_durations[time_index]
 
-            np.asarray(xtot_w1, dtype=np.float32).tofile(os.path.join(self.output_dir, f"{self.prefix}_{frame_start_time}min_tot_w1.a00"))
-            np.asarray(xtot_w2, dtype=np.float32).tofile(os.path.join(self.output_dir, f"{self.prefix}_{frame_start_time}min_tot_w2.a00"))
-            np.asarray(xtot_w3, dtype=np.float32).tofile(os.path.join(self.output_dir, f"{self.prefix}_{frame_start_time}min_tot_w3.a00"))
+            np.asarray(xtot_w1, dtype=np.float32).tofile(os.path.join(self.output_dir, f"{self.prefix}_{time}min_tot_w1.a00"))
+            np.asarray(xtot_w2, dtype=np.float32).tofile(os.path.join(self.output_dir, f"{self.prefix}_{time}min_tot_w2.a00"))
+            np.asarray(xtot_w3, dtype=np.float32).tofile(os.path.join(self.output_dir, f"{self.prefix}_{time}min_tot_w3.a00"))
 
     def _aggregate_core_totals_for_organ(self, organ_name):
         xtot_w1 = 0

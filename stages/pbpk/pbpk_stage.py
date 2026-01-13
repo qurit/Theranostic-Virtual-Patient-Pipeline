@@ -95,7 +95,7 @@ class PbpkStage:
         mask = mask_roi_body[label_value]
         n_vox = int(np.sum(mask))
         if n_vox == 0:
-            return None
+            raise AssertionError(f"Mask corresponding to {voi_name} is empty")
 
         tac_voi = tacs[0, :, voi_index]
         tac_interp = np.interp(self.frame_start, time, tac_voi)

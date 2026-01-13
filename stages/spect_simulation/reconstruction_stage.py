@@ -45,7 +45,7 @@ class SpectReconstructionStage:
 
         self.output_tuple = (self.output_pixel_width, self.output_pixel_width, self.output_slice_width)
         
-        self.algorithm = config["spect_simulation"]["ReconstructionAlgorithm"]
+        self.recon_algorithm = config["spect_simulation"]["ReconstructionAlgorithm"]
 
     # -----------------------------
     # helpers
@@ -102,10 +102,10 @@ class SpectReconstructionStage:
         ) # MBq / cm^3 = MBq / ml
 
     def _get_recon_img(self, likelihood, sensitivity, frame_duration):
-        if self.algorithm.lower() = "osem":
+        if self.recon_algorithm.lower() == "osem":
             recon_algorithm = OSEM(likelihood)
         else:
-            raise ValueError(f"Unsupported reconstruction algorithm: {self.algorithm}") # TODO: will need add more later
+            raise ValueError(f"Unsupported reconstruction algorithm: {self.recon_algorithm}") # TODO: will need add more later
         
         reconstructed_image = recon_algorithm(
             n_iters=self.iterations,

@@ -37,7 +37,7 @@
     "spect_simulation": { // Spect simulation parameters
         "name" : "spect_simulation", // File name prefix
         "SIMINDDirectory": "/home/jhubadmin/simind/simind",    // SIMIND: Path to SIMIND executable
-        "Algorithm": "OSEM",   // PyTomography: Reconstruction algorithm 
+        "ReconstructionAlgorithm": "OSEM",   // PyTomography: Reconstruction algorithm 
         "Collimator": "si-me",  // SIMIND: Collimator type - refer to SIMIND documentation
         "Isotope": "lu177",    // SIMIND: Isotope type - refer to SIMIND documentation
         "NumProjections": 64,   // SIMIND: Number of projections (96 is standard)

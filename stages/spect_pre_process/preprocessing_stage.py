@@ -16,8 +16,18 @@ class SimindPreprocessStage:
 
         self.prefix = config["spect_preprocessing"]["name"]
         self.resize = config["spect_preprocessing"]["resize"]
-        self.ts_classes = config["total_segmentator_classes"]
         self.roi_subset = list(config["spect_preprocessing"]["roi_subset"])
+        
+        # load total segmentator classes
+        self.ts_classes_path = config["spect_preprocessing"]["total_segmentator_classes_path"]
+        if not os.path.exists(self.ts_classes_path):
+            raise FileNotFoundError(f"Total seg class file not found: {self.ts_classes_path}")
+        
+        with open(self.ts_classes_path, encoding="utf-8") as f:
+            self.ts_classes_json = json.loads(json_minify(f.read()))
+            
+        self.ts_classes = self.ts_classes_json["classes_v1"]
+
 
         self.ct_nii_path = context.ct_nii_path
         self.roi_seg_path = context.roi_seg_path

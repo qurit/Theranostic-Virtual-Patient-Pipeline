@@ -68,7 +68,6 @@ class PbpkStage:
             "sample_time": samp_time_f,
             "sample_values": samp_vals_f,
         }
-
     def _compute_activity_for_roi(
         self,
         roi_name,
@@ -81,10 +80,15 @@ class PbpkStage:
         saved_tacs,
     ):
         voi_name = self._roi_to_voi(roi_name)
+
         if voi_name not in self.vois_pbpk:
-            voi_name = "Rest"
-        if voi_name not in self.vois_pbpk:
-            return None  # nothing sensible to do
+            if "Rest" in self.vois_pbpk:
+                voi_name = "Rest" # use 'Rest' VOI for unmapped ROIs
+            else:
+                raise ValueError(
+                    f"ROI '{roi_name}' maps to VOI '{voi_name}', but that VOI is not in the PBPK model "
+                    f"(supported: {sorted(self.vois_pbpk)}), and no 'Rest' VOI exists."
+                )
 
         voi_index = self.vois_pbpk.index(voi_name)
 

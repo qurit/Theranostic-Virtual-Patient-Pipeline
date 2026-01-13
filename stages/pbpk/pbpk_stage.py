@@ -152,7 +152,7 @@ class PbpkStage:
                 saved_tacs=saved_tacs,
             )
             if out is None:
-                continue
+                raise AssertionError(f"Failed to compute activity for ROI '{roi_name}'")
 
             activity_map_organ, organ_sum, organ_map_path = out
             organ_paths.append(organ_map_path)

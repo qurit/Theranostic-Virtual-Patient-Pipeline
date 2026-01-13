@@ -27,6 +27,8 @@ class SimindPreprocessStage:
             self.ts_classes_json = json.loads(json_minify(f.read()))
             
         self.ts_classes = self.ts_classes_json["classes_v1"]
+        # Reverse map: class name -> label id (int), more convient method
+        self.ts_name_to_id = {name: int(lab) for lab, name in self.ts_classes.items()}
 
 
         self.ct_nii_path = context.ct_nii_path
@@ -55,7 +57,14 @@ class SimindPreprocessStage:
     def _build_label_masks(arr):
         labels = np.unique(arr)
         labels = labels[labels != 0]
+        
+        if labels.size == 0:
+            raise ValueError(
+                "Segmentation has no non-zero labels (only background=0). "
+                "Segmentation likely failed or ROI subset is empty/mismatched."
+                )
         return {int(lab): (arr == lab) for lab in labels}
+    
 
     @staticmethod
     def _hu_to_mu(hu_arr, pixel_size_cm, mu_water=0.1537, mu_bone=0.2234):
@@ -81,7 +90,10 @@ class SimindPreprocessStage:
         mu_map.tofile(out_path)
         return out_path
 
-    def _combine_roi_and_body(self, roi_seg_arr, body_seg_arr, body_label=200):
+    def _combine_roi_and_body(self, roi_seg_arr, body_seg_arr):
+        body_label = self.ts_name_to_id.get("body")
+        if body_label is None:
+            raise KeyError("'body' not found in total segmentator classes json")
         roi_mask = roi_seg_arr != 0
         body_mask = body_seg_arr > 0
 
@@ -93,23 +105,19 @@ class SimindPreprocessStage:
         return out, masks
 
     @staticmethod
-    def _to_simind_grid(nii_obj, resize=None, transpose_tuple=(2, 1, 0)):
+    def _to_simind_grid(nii_obj, resize=None, transpose_tuple=(2, 1, 0),zoom_order=0):
         arr = np.array(nii_obj.get_fdata(dtype=np.float32))
         arr = np.transpose(arr, transpose_tuple)[:, ::-1, :]
 
         scale = 1.0
         if resize is not None:
             scale = resize / arr.shape[1]
-            arr = zoom(arr, (scale, scale, scale), order=0)
+            arr = zoom(arr, (scale, scale, scale), order = zoom_order) 
 
         return arr, scale
 
     @staticmethod
-    def _merge_kidneys_if_needed(roi_subset, roi_seg_arr):
-        left_label = 3 # check config  - origin: tot seg
-        right_label = 2 # check config  - origin: tot seg
-        merged_label = 100 # check config - origin: user defined
-
+    def _merge_kidneys_if_needed(roi_subset, roi_seg_arr, left_label, right_label, merged_label):
         has_left = "kidney_left" in roi_subset
         has_right = "kidney_right" in roi_subset
 
@@ -119,6 +127,9 @@ class SimindPreprocessStage:
             raise ValueError("PBPK requires both kidneys (missing kidney_left).")
 
         if has_left and has_right:
+            left_label = self.ts_name_to_id.get("kidney_left")
+            right_label = self.ts_name_to_id.get("kidney_right")
+            merged_label = self.ts_name_to_id.get("kidney")
             new_subset = [r for r in roi_subset if r not in ("kidney_left", "kidney_right")]
             if "kidney" not in new_subset:
                 new_subset.append("kidney")
@@ -150,9 +161,9 @@ class SimindPreprocessStage:
         roi_nii = nib.load(self.roi_seg_path)
         body_nii = nib.load(body_seg_path)
 
-        ct_arr, scale = self._to_simind_grid(ct_nii, resize=self.resize)
-        roi_arr, _ = self._to_simind_grid(roi_nii, resize=self.resize)
-        body_arr, _ = self._to_simind_grid(body_nii, resize=self.resize)
+        ct_arr, scale = self._to_simind_grid(ct_nii, resize=self.resize, zoom_order=1)   # CT: linear
+        roi_arr, _    = self._to_simind_grid(roi_nii, resize=self.resize, zoom_order=0)  # mask: nearest
+        body_arr, _   = self._to_simind_grid(body_nii, resize=self.resize, zoom_order=0) # mask: nearest
 
         roi_arr, roi_subset = self._merge_kidneys_if_needed(self.roi_subset, roi_arr)
 

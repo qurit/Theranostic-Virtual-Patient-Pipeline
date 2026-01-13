@@ -47,7 +47,8 @@
         "OutputPixelWidth": 0.5, // SIMIND: Output pixel size [cm]
         "OutputSliceWidth": 0.5, // SIMIND: Output slice width [cm]
         "Iterations": 4,    // PyTomography: Number of iterations used in reconstruction
-        "Subsets": 8    // PyTomography: Number of subsets used in reconstruction
+        "Subsets": 8,   // PyTomography: Number of subsets used in reconstruction
+        "NumCores": 30 // Number of CPU cores to use for parallel SIMIND simulations
     }
         
 }

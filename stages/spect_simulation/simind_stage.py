@@ -31,8 +31,12 @@ class SimindSimulationStage:
         self.output_slice_width = config["spect_simulation"]["OutputSliceWidth"]
         self.num_photons = config["spect_simulation"]["NumPhotons"]
         self.simind_dir = config["spect_simulation"]["SIMINDDirectory"]
-
-        self.num_cores = os.cpu_count()
+        
+        if config["spect_simulation"]["NumCores"] is None or config["spect_simulation"]["NumCores"] > os.cpu_count(): 
+            self.num_cores = os.cpu_count()
+        else:
+            self.num_cores = config["spect_simulation"]["NumCores"]
+            
         self.simind_exe = os.path.join(self.simind_dir, "simind")
 
     def _set_simind_environment(self):

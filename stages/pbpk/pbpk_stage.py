@@ -68,7 +68,7 @@ class PbpkStage:
             "sample_time": samp_time_f,
             "sample_values": samp_vals_f,
         }
-    def _compute_activity_for_roi(
+    def _generate_time_activity_arr_roi(
         self,
         roi_name,
         label_value,
@@ -141,7 +141,7 @@ class PbpkStage:
         saved_tacs = {}
 
         for roi_name, label_value in class_seg.items():
-            out = self._compute_activity_for_roi(
+            out = self._generate_time_activity_arr_roi(
                 roi_name=roi_name,
                 label_value=label_value,
                 mask_roi_body=mask_roi_body,

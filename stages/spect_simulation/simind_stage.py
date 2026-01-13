@@ -32,11 +32,13 @@ class SimindSimulationStage:
         self.num_photons = config["spect_simulation"]["NumPhotons"]
         self.simind_dir = config["spect_simulation"]["SIMINDDirectory"]
         
-        if config["spect_simulation"]["NumCores"] is None or config["spect_simulation"]["NumCores"] > os.cpu_count(): 
-            self.num_cores = os.cpu_count()
+        num_cores = config["spect_simulation"].get("NumCores", None)
+        max_cores = os.cpu_count() or 1
+        if not isinstance(num_cores, int) or num_cores < 1 or num_cores > max_cores:
+            self.num_cores = max_cores
         else:
-            self.num_cores = config["spect_simulation"]["NumCores"]
-            
+            self.num_cores = num_cores
+        
         self.simind_exe = os.path.join(self.simind_dir, "simind")
 
     def _set_simind_environment(self):

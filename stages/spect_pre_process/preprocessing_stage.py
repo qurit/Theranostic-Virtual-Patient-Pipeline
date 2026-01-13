@@ -2,7 +2,8 @@ import os
 import nibabel as nib
 import numpy as np
 from scipy.ndimage import zoom
-
+import json
+from json_minify import json_minify
 
 class SimindPreprocessStage:
     def __init__(self, config, context):
@@ -116,8 +117,7 @@ class SimindPreprocessStage:
 
         return arr, scale
 
-    @staticmethod
-    def _merge_kidneys_if_needed(roi_subset, roi_seg_arr, left_label, right_label, merged_label):
+    def _merge_kidneys_if_needed(self,roi_subset, roi_seg_arr):
         has_left = "kidney_left" in roi_subset
         has_right = "kidney_right" in roi_subset
 

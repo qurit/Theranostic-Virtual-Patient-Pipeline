@@ -31,7 +31,6 @@ class SimindSimulationStage:
         self.output_slice_width = config["spect_simulation"]["OutputSliceWidth"]
         self.num_photons = config["spect_simulation"]["NumPhotons"]
         self.simind_dir = config["spect_simulation"]["SIMINDDirectory"]
-        self.enable_patient_contour_orbit = config["spect_simulation"]["EnablePatientContourOrbit"]
         
         num_cores = config["spect_simulation"].get("NumCores", None)
         max_cores = os.cpu_count() or 1
@@ -219,7 +218,7 @@ class SimindSimulationStage:
                 f"/29:{self.num_projections}"
                 f"/31:{input_pixel_width}"
                 f"/34:{roi_seg_arr.shape[0]}"
-                f"/42:{(-1 if self.enable_patient_contour_orbit else 1) * self.detector_distance}"
+                f"/42:{self.detector_distance}"
                 f"/76:{self.output_img_size}"
                 f"/77:{output_img_length}"
                 f"/78:{roi_seg_arr.shape[1]}"

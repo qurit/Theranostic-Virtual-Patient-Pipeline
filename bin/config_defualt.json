@@ -49,6 +49,7 @@
         "Iterations": 4,    // PyTomography: Number of iterations used in reconstruction
         "Subsets": 8,   // PyTomography: Number of subsets used in reconstruction
         "NumCores": 30 // Number of CPU cores to use for parallel SIMIND simulations
+        "EnablePatientContourOrbit": True // SIMIND: Enable patient contouring
     }
         
 }

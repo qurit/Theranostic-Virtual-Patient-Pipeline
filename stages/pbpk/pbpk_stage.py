@@ -137,7 +137,6 @@ class PbpkStage:
 
         activity_organ_sum = {}
         organ_paths = []
-        frame_paths = []
         saved_tacs = {}
 
         for roi_name, label_value in class_seg.items():
@@ -162,19 +161,17 @@ class PbpkStage:
             activity_map[:, mask] = activity_map_organ[:, mask]
 
         activity_map_sum = np.sum(activity_map, axis=(1, 2, 3)) * voxel_vol_ml
-
+        
         # Save full maps per frame (optional, but kept)
         for i, frame in enumerate(activity_map):
             t = self.frame_start[i]
             p = os.path.join(self.output_dir, f"{self.prefix}_{t}_act_av.bin")
             frame.astype(np.float32).tofile(p)
-            frame_paths.append(p)
 
         # Update context 
         self.context.activity_map_sum = activity_map_sum
         self.context.activity_organ_sum = activity_organ_sum
         self.context.activity_map_paths_by_organ = organ_paths
-        self.context.activity_map_paths_by_frame = frame_paths
 
         # extras
         self.context.extras["pbpk_output_dir"] = self.output_dir

@@ -35,7 +35,6 @@ class Context:
         self.activity_map_sum = None          # per-frame total activity [MBq], shape (n_frames,)
         self.activity_organ_sum = None        # dict organ -> per-frame activity [MBq]
         self.activity_map_paths_by_organ = None  # list of per-organ FIRST-frame activity maps (for SIMIND)
-        self.activity_map_paths_by_frame = None  # list of per-frame activity maps (optional)
 
         # -----------------------------
         # Stage 4: SIMIND

@@ -251,12 +251,12 @@ class SpectReconstructionStage:
         recon_atn_img, recon_atn_path = self._write_recon_atn_img(amap)
 
         # Update context
-        self.context.spect_sim_output_dir = self.output_dir
-        self.context.recon_paths = recon_paths
-        self.context.recon_atn_img = recon_atn_img
-        self.context.recon_atn_path = recon_atn_path
+        #self.context.spect_sim_output_dir = self.output_dir
+        #self.context.recon_paths = recon_paths
+        #self.context.recon_atn_img = recon_atn_img
+        #self.context.recon_atn_path = recon_atn_path
 
-        self.context.extras["recon_output_dir"] = self.output_dir
-        self.context.extras["recon_header_dir_used"] = self.header_dir
+        #self.context.extras["recon_output_dir"] = self.output_dir
+        #self.context.extras["recon_header_dir_used"] = self.header_dir
 
         return self.context

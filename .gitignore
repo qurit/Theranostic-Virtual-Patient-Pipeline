@@ -4,3 +4,5 @@ inputs/CT/*
 .DS_Store
 /inputs/config.json
 post_processing_script.ipynb
+TDT_Output*/
+TDT_Output*

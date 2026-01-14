@@ -107,11 +107,19 @@ class SimindPreprocessStage:
 
     @staticmethod
     def _to_simind_grid(nii_obj, resize=None, transpose_tuple=(2, 1, 0),zoom_order=0):
+        """Convert NIfTI object to SIMIND grid format with optional resizing.
+        
+        xy will be resized based on resize parameter, z will be scaled accordingly based
+        on ratio of xy value to resize parameter.
+        assumes xy have shape (almost always true->James)
+        """
         arr = np.array(nii_obj.get_fdata(dtype=np.float32))
         arr = np.transpose(arr, transpose_tuple)[:, ::-1, :]
 
         scale = 1.0
         if resize is not None:
+            if arr.shape[1] != arr.shape[0]:
+                raise ValueError("Resize parameter requires square in-plane dimensions (x=y).")
             scale = resize / arr.shape[1]
             arr = zoom(arr, (scale, scale, scale), order = zoom_order) 
 

@@ -9,7 +9,7 @@
         "path1": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/inputs/CT"
     },
     "output_folder": {
-        "title": "TDT_Output_Validate_Classes" // Output folder name
+        "title": "TDT_Output_DEBUG" // Output folder name
     },
     "subdir_names": { // Output directory names (one for each module)///
         "spect_preprocessing": "spect_preprocessing_outputs",
@@ -22,7 +22,7 @@
         "device":"cpu", 
         "roi_subset":["kidney_right", "kidney_left", "liver"], // ROIs         
         "ml":true,                 // Single multilabel NIfTI instead of per-class files
-        "resize": 256 // x and y dimensions for resizing for SIMIND input
+        "xy_dim": 256 // x and y dimensions for resizing for SIMIND input, z will be scaled based on same ratio
     },
     "pbpk": { // PBPK parameters
         "name" : "pbpk", // File name prefix

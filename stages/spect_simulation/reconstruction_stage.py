@@ -42,6 +42,7 @@ class SpectReconstructionStage:
         self.subsets = config["spect_simulation"]["Subsets"]
         self.output_pixel_width = config["spect_simulation"]["OutputPixelWidth"]
         self.output_slice_width = config["spect_simulation"]["OutputSliceWidth"]
+        self.detector_distance = config["spect_simulation"]["DetectorDistance"]
 
         self.output_tuple = (self.output_pixel_width, self.output_pixel_width, self.output_slice_width)
         
@@ -58,7 +59,7 @@ class SpectReconstructionStage:
             sensitivity = float(sensitivity_line.split(":")[-1].strip().split()[0])
         return sensitivity
 
-    def _get_object_and_proj_metadata(self, photopeak_path, cor_path):
+    def _get_object_and_proj_metadata(self, photopeak_path, cor_path=None):
         object_meta, proj_meta = simind.get_metadata(photopeak_path, cor_path)
         return object_meta, proj_meta
 
@@ -159,10 +160,11 @@ class SpectReconstructionStage:
             if not os.path.exists(p):
                 raise FileNotFoundError(f"Missing SIMIND header file: {p}")
 
-        cor_path = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0.cor")
-        if not os.path.exists(cor_path):
-            raise FileNotFoundError(f"Missing COR file: {cor_path}")
-        _ = self._get_cor_data(cor_path)
+        if self.detector_distance < 0:
+            cor_path = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0.cor")
+            if not os.path.exists(cor_path):
+                raise FileNotFoundError(f"Missing COR file: {cor_path}")
+            _ = self._get_cor_data(cor_path)
 
         object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h, cor_path)
 

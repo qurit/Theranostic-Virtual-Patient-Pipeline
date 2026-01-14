@@ -42,6 +42,7 @@
         "Isotope": "lu177",    // SIMIND: Isotope type - refer to SIMIND documentation
         "NumProjections": 64,   // SIMIND: Number of projections (96 is standard)
         "NumPhotons": 1e8,    // SIMIND: Number of photons
+        "EnergyWindowWidth": 20, // SIMIND: Energy window width [%] around photopeak, e.g., 20 for ±10%
         "DetectorDistance": -10, // SIMIND: Detector distance [cm]. If this number is negative, patient contouring is enabled.
         "OutputImgSize": 128,   // SIMIND: Output image dimensions
         "OutputPixelWidth": 0.5, // SIMIND: Output pixel size [cm]

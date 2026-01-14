@@ -31,6 +31,7 @@ class SimindSimulationStage:
         self.output_slice_width = config["spect_simulation"]["OutputSliceWidth"]
         self.num_photons = config["spect_simulation"]["NumPhotons"]
         self.simind_dir = config["spect_simulation"]["SIMINDDirectory"]
+        self.energy_window_width = config["spect_simulation"]["EnergyWindowWidth"]
         
         num_cores = config["spect_simulation"].get("NumCores", None)
         max_cores = os.cpu_count() or 1
@@ -214,6 +215,8 @@ class SimindSimulationStage:
                 f"/10:{detector_width_cm:.2f}"
                 f"/14:-7"
                 f"/15:-7"
+                f"/20:{-1*self.energy_window_width}" # if value of -20 is given, means ±10% around centre
+                f"/21:{-1*self.energy_window_width}" # dont know behavior if not given to both index 20 and 21 (gave to both)
                 f"/28:{self.output_pixel_width}"
                 f"/29:{self.num_projections}"
                 f"/31:{input_pixel_width}"

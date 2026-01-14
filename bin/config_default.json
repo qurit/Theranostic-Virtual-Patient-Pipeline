@@ -44,6 +44,8 @@
         "NumPhotons": 1e8,    // SIMIND: Number of photons
         "EnergyWindowWidth": 20, // SIMIND: Energy window width [%] around photopeak, e.g., 20 for ±10%
         "DetectorDistance": -10, // SIMIND: Detector distance [cm]. If this number is negative, patient contouring is enabled.
+        "DetectorWidth": 53.3,   // SIMIND: Detector width [cm] -> 53.3 is one found online
+        "DetectorLength": 0,  // SIMIND: Detector length [cm] NOTE: if value is 0 will use length of CT
         "OutputImgSize": 128,   // SIMIND: Output image dimensions
         "OutputPixelWidth": 0.5, // SIMIND: Output pixel size [cm]
         "OutputSliceWidth": 0.5, // SIMIND: Output slice width [cm]

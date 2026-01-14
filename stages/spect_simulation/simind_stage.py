@@ -32,6 +32,8 @@ class SimindSimulationStage:
         self.num_photons = config["spect_simulation"]["NumPhotons"]
         self.simind_dir = config["spect_simulation"]["SIMINDDirectory"]
         self.energy_window_width = config["spect_simulation"]["EnergyWindowWidth"]
+        self.detector_width = config["spect_simulation"]["DetectorWidth"] # cm
+        self.detector_length = config["spect_simulation"]["DetectorLength"] # cm (if value is 0 will use length of CT)
         
         num_cores = config["spect_simulation"].get("NumCores", None)
         max_cores = os.cpu_count() or 1
@@ -179,8 +181,11 @@ class SimindSimulationStage:
 
         output_img_length = input_slice_width * roi_seg_arr.shape[0] / self.output_slice_width
 
-        detector_width_cm = 53.3
-        detector_length_cm = roi_seg_arr.shape[0] * input_slice_width
+        detector_width_cm = self.detector_width # cm
+        if self.detector_length == 0:
+            detector_length_cm = roi_seg_arr.shape[0] * input_slice_width # cm
+        else:
+            detector_length_cm = self.detector_length # cm
 
         atn_name = os.path.basename(atn_av_path)
         atn_work_path = os.path.join(self.work_dir, atn_name)

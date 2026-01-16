@@ -35,9 +35,9 @@ class SimindSimulationStage:
         self.detector_width = config["spect_simulation"]["DetectorWidth"] # cm
         self.detector_length = config["spect_simulation"]["DetectorLength"] # cm (if value is 0 will use length of CT)
         
-        num_cores = config["spect_simulation"].get("NumCores", None)
-        max_cores = os.cpu_count() or 1
-        if not isinstance(num_cores, int) or num_cores < 1 or num_cores > max_cores:
+        num_cores = config["spect_simulation"]["NumCores"]
+        max_cores = os.cpu_count() or 1  # guard against None
+        if isinstance(num_cores, bool) or not isinstance(num_cores, int) or not (1 <= num_cores <= max_cores):
             self.num_cores = max_cores
         else:
             self.num_cores = num_cores

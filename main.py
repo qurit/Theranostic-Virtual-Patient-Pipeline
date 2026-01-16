@@ -2,6 +2,7 @@ import os
 import json
 from json_minify import json_minify
 import logging
+import time
 
 from context import Context
 
@@ -30,11 +31,14 @@ class TdtPipeline:
         logger.setLevel(logging.INFO)
         logger.propagate = False  # prevent duplicate output if root logger is set elsewhere
         
+        
         # Avoid adding multiple handlers if pipeline is constructed multiple times
         if not any(isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", "") == log_path for h in logger.handlers):
             fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
-            fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+            fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
             logger.addHandler(fh)
+            
+        logger.info("Log started") 
             
         config = json.dumps(self.config, indent=2, sort_keys=True)
         logger.info("CONFIG SOURCE: %s", os.path.abspath(self.config_path))
@@ -61,6 +65,11 @@ class TdtPipeline:
         self._log_config_to_file()
 
     def run(self):
+        logger = logging.getLogger("TDT_CONFIG_LOGGER")
+        t_pipeline = time.perf_counter()                 
+
+        logger.info("Pipeline start | mode=%s", self.mode)  
+        
         print("Loading TDT Pipeline configuration and setting up context manager...")
         context = Context()
         print("Starting TDT Pipeline in mode:", self.mode) # TODO: mode will be used later, determine what gets saved
@@ -68,37 +77,68 @@ class TdtPipeline:
         # -----------------------------
         # Stage 1: TotalSegmentator
         # -----------------------------
+        
+        logger.info("Stage start: TotalSegmentator")  
+        t_stage = time.perf_counter()                 
+        
         print("Running TotalSegmentator Stage...")
         context = TotalSegmentationStage(self.config, context).run()
         print("TotalSegmentator Stage completed.")
         
+        logger.info("Stage end: TotalSegmentator | elapsed=%.2fs", time.perf_counter() - t_stage)  
+        
         # -----------------------------
         # Stage 2: Preprocess for SIMIND
         # -----------------------------
+        
+        logger.info("Stage start: SIMIND Preprocessing") 
+        t_stage = time.perf_counter()               
+               
         print("Running SIMIND Preprocessing Stage...")
         context = SimindPreprocessStage(self.config, context).run()
         print("SIMIND Preprocessing Stage completed.")
         
+        logger.info("Stage end: SIMIND Preprocessing | elapsed=%.2fs", time.perf_counter() - t_stage)  
+        
         # -----------------------------
         # Stage 3: PBPK 
         # -----------------------------
+        
+        logger.info("Stage start: PBPK")  
+        t_stage = time.perf_counter()     
+        
         print("Running PBPK Stage...")
         context = PbpkStage(self.config, context).run()
         print("PBPK Stage completed.")
+        
+        logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)  
 
         # -----------------------------
         # Stage 4: SIMIND 
         # -----------------------------
+        logger.info("Stage start: SIMIND Simulation")  
+        t_stage = time.perf_counter()                 
+        
         print("Running SIMIND Simulation Stage...")
         context = SimindSimulationStage(self.current_dir_path, self.config, context).run()
         print("SIMIND Simulation Stage completed.")
         
+        logger.info("Stage end: SIMIND Simulation | elapsed=%.2fs", time.perf_counter() - t_stage)  
+        
         # -----------------------------
         # Stage 5: Recon 
         # -----------------------------
+        
+        logger.info("Stage start: SPECT Reconstruction")  
+        t_stage = time.perf_counter()                      
+        
         print("Running SPECT Reconstruction Stage...")
         context = SpectReconstructionStage(self.config, context).run()
         print("SPECT Reconstruction Stage completed.")
+
+        logger.info("Stage end: SPECT Reconstruction | elapsed=%.2fs", time.perf_counter() - t_stage)  
+
+        logger.info("Pipeline end | total_elapsed=%.2fs", time.perf_counter() - t_pipeline)  
 
         print("TDT Pipeline completed successfully.")
         return context

@@ -36,7 +36,7 @@ class PbpkStage:
         time, tacs = pycno.run_model(
             model_name="PSMA",
             stop=self.frame_stop,
-            observables=self.vois_pbpk,
+            observables=self.vois_pbpk
         )
         return time, tacs
 

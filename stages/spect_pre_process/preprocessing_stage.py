@@ -16,7 +16,7 @@ class SimindPreprocessStage:
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.prefix = config["spect_preprocessing"]["name"]
-        self.resize = config["spect_preprocessing"]["resize"]
+        self.resize = config["spect_preprocessing"]["xy_dim"]
         self.roi_subset = list(config["spect_preprocessing"]["roi_subset"])
         
         # load total segmentator classes

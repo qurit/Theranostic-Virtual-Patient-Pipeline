@@ -118,7 +118,7 @@ class SimindPreprocessStage:
 
         scale = 1.0
         if resize is not None:
-            if arr.shape[1] != arr.shape[0]:
+            if arr.shape[1] != arr.shape[2]:
                 raise ValueError("Resize parameter requires square in-plane dimensions (x=y).")
             scale = resize / arr.shape[1]
             arr = zoom(arr, (scale, scale, scale), order = zoom_order) 

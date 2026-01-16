@@ -18,7 +18,7 @@
     },
     "spect_preprocessing": { // preprocessing parameters
         "name" : "spect_preprocessing", // File name prefix
-        "total_segmentator_classes_path": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/tools/total_segmentator_classes.json",
+        "total_segmentator_classes_path": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/data/total_segmentator_classes.json",
         "device":"cpu", 
         "roi_subset":["kidney_right", "kidney_left", "liver"], // ROIs         
         "ml":true,                 // Single multilabel NIfTI instead of per-class files

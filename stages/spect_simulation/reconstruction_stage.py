@@ -164,8 +164,8 @@ class SpectReconstructionStage:
             cor_path = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0.cor")
             if not os.path.exists(cor_path):
                 raise FileNotFoundError(f"Missing COR file: {cor_path}")
-            cor_path_new = self._get_cor_data(cor_path)
-            object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h, cor_path_new)
+            _ = self._get_cor_data(cor_path)
+            object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h, cor_path)
         else: 
             object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h)
 

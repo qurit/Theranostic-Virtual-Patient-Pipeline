@@ -2,9 +2,9 @@
 // Commented which extra classes were added
 // IDs are based on Total Segmentator backend
 {
-    "classes_v1": {
-        "100": "kidney", // added myself for total segmentator
-        "200": "body", // added myself for total segmentator
+    "total": { // classes of new TotalSegmentator v2 + more
+        "100": "kidney", // kidney combined, added myself for TDT
+        "200": "body", // added myself for TDT
         "1": "spleen",
         "2": "kidney_right",
         "3": "kidney_left",
@@ -94,5 +94,27 @@
         "87": "autochthon_right",
         "88": "iliopsoas_left",
         "89": "iliopsoas_right"
+    },
+    "head_glands_cavities": { // for Salivary glands , added more
+    "20" : "SG", // salivary glands combined , added myself for TDT
+    "1": "eye_left",
+    "2": "eye_right",
+    "3": "eye_lens_left",
+    "4": "eye_lens_right",
+    "5": "optic_nerve_left",
+    "6": "optic_nerve_right",
+    "7": "parotid_gland_left", // part of salivary glands
+    "8": "parotid_gland_right", // part of salivary glands
+    "9": "submandibular_gland_right", // part of salivary glands
+    "10": "submandibular_gland_left", // part of salivary glands
+    "11": "nasopharynx",
+    "12": "oropharynx",
+    "13": "hypopharynx",
+    "14": "nasal_cavity_right",
+    "15": "nasal_cavity_left",
+    "16": "auditory_canal_right",
+    "17": "auditory_canal_left",
+    "18": "soft_palate",
+    "19": "hard_palate"
     }
 }

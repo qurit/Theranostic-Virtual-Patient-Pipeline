@@ -14,7 +14,7 @@ class SimindPreprocessStage:
         output_root = config["output_folder"]["title"]
         self.output_dir = os.path.join(output_root, subdir_name)
         os.makedirs(self.output_dir, exist_ok=True)
-
+ 
         self.prefix = config["spect_preprocessing"]["name"]
         self.resize = config["spect_preprocessing"]["xy_dim"]
         self.roi_subset = list(config["spect_preprocessing"]["roi_subset"])
@@ -27,7 +27,7 @@ class SimindPreprocessStage:
         with open(self.ts_classes_path, encoding="utf-8") as f:
             self.ts_classes_json = json.loads(json_minify(f.read()))
             
-        self.ts_classes = self.ts_classes_json["classes_v1"]
+        self.ts_classes = self.ts_classes_json["total"]
         # Reverse map: class name -> label id (int), more convient method
         self.ts_name_to_id = {name: int(lab) for lab, name in self.ts_classes.items()}
 

@@ -1,10 +1,9 @@
-// Adjusted Total Segmentator classes for TDT pipeline
-// Commented which extra classes were added
+// Adjusted Total Segmentator classes for TDT pipeline use
+
 // IDs are based on Total Segmentator backend
+// TDT pipeline only uses a subset of these for ROIs
 {
-    "total": { // classes of new TotalSegmentator v2 + more
-        "100": "kidney", // kidney combined, added myself for TDT
-        "200": "body", // added myself for TDT
+    "total": { // other roi -  - total segmentator backend
         "1": "spleen",
         "2": "kidney_right",
         "3": "kidney_left",
@@ -93,20 +92,51 @@
         "86": "autochthon_left",
         "87": "autochthon_right",
         "88": "iliopsoas_left",
-        "89": "iliopsoas_right"
+        "89": "iliopsoas_right",
+        "90": "brain",
+        "91": "skull",
+        "92": "rib_left_1",
+        "93": "rib_left_2",
+        "94": "rib_left_3",
+        "95": "rib_left_4",
+        "96": "rib_left_5",
+        "97": "rib_left_6",
+        "98": "rib_left_7",
+        "99": "rib_left_8",
+        "100": "rib_left_9",
+        "101": "rib_left_10",
+        "102": "rib_left_11",
+        "103": "rib_left_12",
+        "104": "rib_right_1",
+        "105": "rib_right_2",
+        "106": "rib_right_3",
+        "107": "rib_right_4",
+        "108": "rib_right_5",
+        "109": "rib_right_6",
+        "110": "rib_right_7",
+        "111": "rib_right_8",
+        "112": "rib_right_9",
+        "113": "rib_right_10",
+        "114": "rib_right_11",
+        "115": "rib_right_12",
+        "116": "sternum",
+        "117": "costal_cartilages"
     },
-    "head_glands_cavities": { // for Salivary glands , added more
-    "20" : "SG", // salivary glands combined , added myself for TDT
+    "body": { // for body segmentation - total segmentator backend
+        "1": "body_trunc",
+        "2": "body_extremities"
+    },
+    "head_glands_cavities": { // for head and cavitates  - total segmentator backend
     "1": "eye_left",
     "2": "eye_right",
     "3": "eye_lens_left",
     "4": "eye_lens_right",
     "5": "optic_nerve_left",
     "6": "optic_nerve_right",
-    "7": "parotid_gland_left", // part of salivary glands
-    "8": "parotid_gland_right", // part of salivary glands
-    "9": "submandibular_gland_right", // part of salivary glands
-    "10": "submandibular_gland_left", // part of salivary glands
+    "7": "parotid_gland_left", 
+    "8": "parotid_gland_right", 
+    "9": "submandibular_gland_right", 
+    "10": "submandibular_gland_left", 
     "11": "nasopharynx",
     "12": "oropharynx",
     "13": "hypopharynx",
@@ -116,5 +146,15 @@
     "17": "auditory_canal_left",
     "18": "soft_palate",
     "19": "hard_palate"
+    },
+    "TDT_Pipeline":{// Adjusted classes for TDT pipeline use (only ones possible to use as ROIs) 
+        "0": "background",
+        "1": "body",
+        "2": "kidney",
+        "3": "liver",
+        "4": "prostate",
+        "5": "spleen",
+        "6": "heart",
+        "7": "salivary_glands"
     }
 }

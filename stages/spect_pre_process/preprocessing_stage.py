@@ -5,6 +5,7 @@ from scipy.ndimage import zoom
 import json
 from json_minify import json_minify
 
+
 class SimindPreprocessStage:
     def __init__(self, config, context):
         self.config = config
@@ -14,42 +15,43 @@ class SimindPreprocessStage:
         output_root = config["output_folder"]["title"]
         self.output_dir = os.path.join(output_root, subdir_name)
         os.makedirs(self.output_dir, exist_ok=True)
- 
+
         self.prefix = config["spect_preprocessing"]["name"]
         self.resize = config["spect_preprocessing"]["xy_dim"]
-        self.roi_subset = list(config["spect_preprocessing"]["roi_subset"])
-        
-        # load total segmentator classes
-        self.ts_classes_path = config["spect_preprocessing"]["total_segmentator_classes_path"]
-        if not os.path.exists(self.ts_classes_path):
-            raise FileNotFoundError(f"Total seg class file not found: {self.ts_classes_path}")
-        
-        with open(self.ts_classes_path, encoding="utf-8") as f:
-            self.ts_classes_json = json.loads(json_minify(f.read()))
-            
-        self.ts_classes = self.ts_classes_json["total"]
-        # Reverse map: class name -> label id (int), more convient method
-        self.ts_name_to_id = {name: int(lab) for lab, name in self.ts_classes.items()}
 
+        # ---- ROI subset is now TDT-level names (kidney, liver, ...) ----
+        self.roi_subset = config["spect_preprocessing"]["roi_subset"]  
+        if isinstance(self.roi_subset, str):  
+            self.roi_subset = [self.roi_subset]  
+        self.roi_subset = [str(r).strip() for r in self.roi_subset if str(r).strip()]  
 
-        self.ct_nii_path = context.ct_nii_path
-        self.roi_seg_path = context.roi_seg_path
-        self.body_seg_dir = getattr(context, "_body_seg_dir", None)
+        # ---- Load ONLY TDT pipeline label map (name -> id) ----
+        self.ts_map_path = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/data/tdt_map.json"
+        if not os.path.exists(self.ts_map_path):
+            raise FileNotFoundError(f"Class map json not found: {self.ts_map_path}")
 
-        if self.body_seg_dir is None:
-            raise AttributeError("Context is missing _body_seg_dir.")
+        with open(self.ts_map_path, encoding="utf-8") as f:
+            ts_map_json = json.loads(json_minify(f.read()))
+
+        # name -> int_label, e.g. {"body":1,"kidney":2,...}
+        self.tdt_name2id = {name: int(lab) for lab, name in ts_map_json["TDT_Pipeline"].items()}  
+
+        self.ct_path = context.ct_path
+        self.body_ml_path = context.body_ml_path
+        self.tdt_roi_seg_path = context.tdt_roi_seg_path  # unified TDT ROI seg
 
     # -----------------------------
     # helpers
     # -----------------------------
     @staticmethod
-    def _build_class_map(seg_arr, classes):
+    def _build_class_map(seg_arr, id_to_name): 
+        """Return {roi_name: label_id} for labels present in seg_arr."""
         class_map = {}
         labels = np.unique(seg_arr.astype(int))
         for lab in labels:
             if lab == 0:
                 continue
-            name = classes.get(str(lab))
+            name = id_to_name.get(int(lab))  
             if name is not None:
                 class_map[name] = int(lab)
         return class_map
@@ -58,14 +60,13 @@ class SimindPreprocessStage:
     def _build_label_masks(arr):
         labels = np.unique(arr)
         labels = labels[labels != 0]
-        
+
         if labels.size == 0:
             raise ValueError(
                 "Segmentation has no non-zero labels (only background=0). "
                 "Segmentation likely failed or ROI subset is empty/mismatched."
-                )
+            )
         return {int(lab): (arr == lab) for lab in labels}
-    
 
     @staticmethod
     def _hu_to_mu(hu_arr, pixel_size_cm, mu_water=0.1537, mu_bone=0.2234):
@@ -85,33 +86,43 @@ class SimindPreprocessStage:
     def _write_attenuation_bin(self, ct_arr, body_seg_arr, pixel_size_cm,
                                filename="spect_preprocessing_atn_av.bin"):
         mu_map = self._hu_to_mu(np.asarray(ct_arr, dtype=np.float32), pixel_size_cm)
-        mu_map *= body_seg_arr
+        mu_map *= body_seg_arr  # assumes body_seg_arr is 0/1-ish mask; if labels >0 that's fine too
 
         out_path = os.path.join(self.output_dir, filename)
         mu_map.tofile(out_path)
         return out_path
 
-    def _combine_roi_and_body(self, roi_seg_arr, body_seg_arr):
-        body_label = self.ts_name_to_id.get("body")
-        if body_label is None:
-            raise KeyError("'body' not found in total segmentator classes json")
-        roi_mask = roi_seg_arr != 0
-        body_mask = body_seg_arr > 0
+    def _filter_to_requested_rois(self, roi_seg_arr):  
+        """
+        Keep only labels requested in config (plus body if present), zero out the rest.
+        This makes downstream masks/class_map reflect *only* user-selected ROIs.
+        """
+        requested = set(self.roi_subset)  
+        keep_ids = set()  
 
-        out = np.zeros_like(roi_seg_arr, dtype=np.float32)
-        out[body_mask] = body_label
-        out[roi_mask] = roi_seg_arr[roi_mask]
+        # Always keep body label if it exists in the unified seg
+        if "body" in self.tdt_name2id:  
+            keep_ids.add(self.tdt_name2id["body"])  
 
-        masks = self._build_label_masks(out)
-        return out, masks
+        for name in requested:  
+            lab = self.tdt_name2id.get(name)  
+            if lab is None:
+                raise ValueError(f"Requested ROI '{name}' not in TDT label map.")  
+            keep_ids.add(lab)  
+
+        keep_ids.discard(0)  
+
+        out = roi_seg_arr.copy()  
+        out[~np.isin(out, list(keep_ids))] = 0  
+        return out  
 
     @staticmethod
-    def _to_simind_grid(nii_obj, resize=None, transpose_tuple=(2, 1, 0),zoom_order=0):
-        """Convert NIfTI object to SIMIND grid format with optional resizing.
-        
-        xy will be resized based on resize parameter, z will be scaled accordingly based
-        on ratio of xy value to resize parameter.
-        assumes xy have shape (almost always true->James)
+    def _to_simind_grid(nii_obj, resize=None, transpose_tuple=(2, 1, 0), zoom_order=0):
+        """
+        Convert NIfTI object to SIMIND grid format with optional resizing.
+
+        NOTE: This assumes your SIMIND expects [z,y,x] with y-flip on the middle axis
+        as you were doing before.
         """
         arr = np.array(nii_obj.get_fdata(dtype=np.float32))
         arr = np.transpose(arr, transpose_tuple)[:, ::-1, :]
@@ -121,93 +132,77 @@ class SimindPreprocessStage:
             if arr.shape[1] != arr.shape[2]:
                 raise ValueError("Resize parameter requires square in-plane dimensions (x=y).")
             scale = resize / arr.shape[1]
-            arr = zoom(arr, (scale, scale, scale), order = zoom_order) 
+            arr = zoom(arr, (scale, scale, scale), order=zoom_order)
 
         return arr, scale
-
-    def _merge_kidneys_if_needed(self,roi_subset, roi_seg_arr):
-        has_left = "kidney_left" in roi_subset
-        has_right = "kidney_right" in roi_subset
-
-        if has_left and not has_right:
-            raise ValueError("PBPK requires both kidneys (missing kidney_right).")
-        if has_right and not has_left:
-            raise ValueError("PBPK requires both kidneys (missing kidney_left).")
-
-        if has_left and has_right:
-            left_label = self.ts_name_to_id.get("kidney_left")
-            right_label = self.ts_name_to_id.get("kidney_right")
-            merged_label = self.ts_name_to_id.get("kidney")
-            new_subset = [r for r in roi_subset if r not in ("kidney_left", "kidney_right")]
-            if "kidney" not in new_subset:
-                new_subset.append("kidney")
-
-            merged = roi_seg_arr.copy()
-            merged[np.isin(roi_seg_arr, (left_label, right_label))] = merged_label
-            return merged, new_subset
-
-        return roi_seg_arr, list(roi_subset)
 
     # -----------------------------
     # main
     # -----------------------------
     def run(self):
-        if self.ct_nii_path is None or not os.path.exists(self.ct_nii_path):
-            raise FileNotFoundError(f"ct_nii_path not found: {self.ct_nii_path}")
+        # ---- existence checks ----
+        if self.ct_path is None or not os.path.exists(self.ct_path):
+            raise FileNotFoundError(f"ct_path not found: {self.ct_path}")
 
-        if self.roi_seg_path is None or not os.path.exists(self.roi_seg_path):
-            raise FileNotFoundError(f"roi_seg_path not found: {self.roi_seg_path}")
+        if self.body_ml_path is None or not os.path.exists(self.body_ml_path):
+            raise FileNotFoundError(f"Body segmentation not found: {self.body_ml_path}")
 
-        if not os.path.isdir(self.body_seg_dir):
-            raise NotADirectoryError(f"_body_seg_dir is not a directory: {self.body_seg_dir}")
+        if self.tdt_roi_seg_path is None or not os.path.exists(self.tdt_roi_seg_path):
+            raise FileNotFoundError(f"Unified TDT ROI seg not found: {self.tdt_roi_seg_path}")  
 
-        body_seg_path = os.path.join(self.body_seg_dir, "body.nii.gz")
-        if not os.path.exists(body_seg_path):
-            raise FileNotFoundError(f"Body segmentation not found: {body_seg_path}")
+        # ---- load nifti ----
+        ct_nii = nib.load(self.ct_path)
+        body_nii = nib.load(self.body_ml_path)
+        roi_nii = nib.load(self.tdt_roi_seg_path)  
 
-        ct_nii = nib.load(self.ct_nii_path)
-        roi_nii = nib.load(self.roi_seg_path)
-        body_nii = nib.load(body_seg_path)
+        # ---- to simind grid ----
+        ct_arr, scale = self._to_simind_grid(ct_nii, resize=self.resize, zoom_order=1)       # CT: linear
+        body_arr, _ = self._to_simind_grid(body_nii, resize=self.resize, zoom_order=0)       # mask: body (nearest)
+        roi_arr, _ = self._to_simind_grid(roi_nii, resize=self.resize, zoom_order=0)         # mask: unified ROI (nearest)
 
-        ct_arr, scale = self._to_simind_grid(ct_nii, resize=self.resize, zoom_order=1)   # CT: linear
-        roi_arr, _    = self._to_simind_grid(roi_nii, resize=self.resize, zoom_order=0)  # mask: nearest
-        body_arr, _   = self._to_simind_grid(body_nii, resize=self.resize, zoom_order=0) # mask: nearest
+        # ---- sanity: body should be binary-ish ----
+        body_mask = (body_arr > 0).astype(np.float32)  
+        roi_arr = roi_arr.astype(np.int16) 
 
-        roi_arr, roi_subset = self._merge_kidneys_if_needed(self.roi_subset, roi_arr)
+        # ---- keep only requested TDT ROIs ----
+        roi_arr = self._filter_to_requested_rois(roi_arr) 
 
-        roi_body_arr, mask_roi_body = self._combine_roi_and_body(roi_arr, body_arr)
-        class_seg = self._build_class_map(roi_body_arr, self.ts_classes)
+        # ---- build masks + class map from TDT label space ----
+        masks = self._build_label_masks(roi_arr)  
+        id_to_name = {v: k for k, v in self.tdt_name2id.items()}  
+        class_seg = self._build_class_map(roi_arr, id_to_name)  
 
-        # spacing: header zooms are (x,y,z); our array is (z,y,x)
+        # ---- spacing ----
         zooms_mm = np.array(ct_nii.header.get_zooms()[:3], dtype=float) / scale
-        zooms_mm = zooms_mm[[2, 1, 0]]
+        zooms_mm = zooms_mm[[2, 1, 0]]  # (z,y,x)
         arr_px_spacing_cm = tuple(float(x) * 0.1 for x in zooms_mm)
 
-        # use in-plane spacing for mu scaling (scalar approximation)
         pixel_size_cm = (arr_px_spacing_cm[1] + arr_px_spacing_cm[2]) / 2.0
 
         atn_av_path = self._write_attenuation_bin(
             ct_arr,
-            body_arr,
+            body_mask,  # use binary mask
             pixel_size_cm=pixel_size_cm,
         )
 
+        # ---- write SIMIND bins ----
         roi_bin = os.path.join(self.output_dir, f"{self.prefix}_roi_seg.bin")
         body_bin = os.path.join(self.output_dir, f"{self.prefix}_body_seg.bin")
         roi_body_bin = os.path.join(self.output_dir, f"{self.prefix}_roi_body_seg.bin")
 
         roi_arr.astype(np.float32).tofile(roi_bin)
-        body_arr.astype(np.float32).tofile(body_bin)
-        roi_body_arr.astype(np.float32).tofile(roi_body_bin)
-
+        body_mask.astype(np.float32).tofile(body_bin)  
+        roi_arr.astype(np.float32).tofile(roi_body_bin)  
+        
+        # ---- update context ----
         self.context.ct_arr = ct_arr
         self.context.roi_seg_arr = roi_arr
-        self.context.body_seg_arr = body_arr
-        self.context.roi_body_seg_arr = roi_body_arr
+        self.context.body_seg_arr = body_mask  
+        self.context.roi_body_seg_arr = roi_arr 
 
-        self.context.mask_roi_body = mask_roi_body
+        self.context.mask_roi_body = masks  
         self.context.class_seg = class_seg
-        self.context.roi_subset = roi_subset
+        self.context.roi_subset = list(self.roi_subset)  
 
         self.context.atn_av_path = atn_av_path
         self.context.roi_seg_bin_path = roi_bin
@@ -215,9 +210,9 @@ class SimindPreprocessStage:
         self.context.roi_body_seg_bin_path = roi_body_bin
 
         self.context.arr_px_spacing_cm = arr_px_spacing_cm
-        
-        self.context.extras["preprocess_scale_factor"] = scale
-        self.context.extras["mu_pixel_size_cm_used"] = float(pixel_size_cm)
 
+        self.context.extras["preprocess_scale_factor"] = float(scale)
+        self.context.extras["mu_pixel_size_cm_used"] = float(pixel_size_cm)
+        self.context.extras["tdt_label_map"] = dict(self.tdt_name2id)  
 
         return self.context

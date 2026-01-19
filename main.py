@@ -7,6 +7,7 @@ import time
 from context import Context
 
 from stages.spect_pre_process.segmentation_stage import TotalSegmentationStage
+from stages.spect_pre_process.unify_ts_outputs import TdtRoiUnifyStage
 from stages.spect_pre_process.preprocessing_stage import SimindPreprocessStage
 
 from stages.pbpk.pbpk_stage import PbpkStage
@@ -88,9 +89,20 @@ class TdtPipeline:
         logger.info("Stage end: TotalSegmentator | elapsed=%.2fs", time.perf_counter() - t_stage)  
         
         # -----------------------------
-        # Stage 2: Preprocess for SIMIND
+        # Stage 2: Unification of TS outputs to TDT ROIs
         # -----------------------------
+        logger.info("Stage start: TDT ROI Unification")
+        t_stage = time.perf_counter()
         
+        print("Running TDT ROI Unification Stage...")
+        context = TdtRoiUnifyStage(self.config, context).run()
+        print("TDT ROI Unification Stage completed.")
+        
+        logger.info("Stage end: TDT ROI Unification | elapsed=%.2fs", time.perf_counter() - t_stage)
+
+        # -----------------------------
+        # Stage 3: Preprocess for SIMIND
+        # -----------------------------
         logger.info("Stage start: SIMIND Preprocessing") 
         t_stage = time.perf_counter()               
                
@@ -101,7 +113,7 @@ class TdtPipeline:
         logger.info("Stage end: SIMIND Preprocessing | elapsed=%.2fs", time.perf_counter() - t_stage)  
         
         # -----------------------------
-        # Stage 3: PBPK 
+        # Stage 4: PBPK 
         # -----------------------------
         
         logger.info("Stage start: PBPK")  
@@ -114,7 +126,7 @@ class TdtPipeline:
         logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)  
 
         # -----------------------------
-        # Stage 4: SIMIND 
+        # Stage 5: SIMIND 
         # -----------------------------
         logger.info("Stage start: SIMIND Simulation")  
         t_stage = time.perf_counter()                 
@@ -126,7 +138,7 @@ class TdtPipeline:
         logger.info("Stage end: SIMIND Simulation | elapsed=%.2fs", time.perf_counter() - t_stage)  
         
         # -----------------------------
-        # Stage 5: Recon 
+        # Stage 6: Recon 
         # -----------------------------
         
         logger.info("Stage start: SPECT Reconstruction")  

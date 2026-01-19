@@ -6,12 +6,18 @@ class Context:
         # -----------------------------
         # Stage 1: TotalSegmentator
         # -----------------------------
-        self.ct_nii_path = None
-        self.roi_seg_path = None
-        self.body_seg_dir = None  # directory that contains body.nii.gz
+        self.ct_path = None
+        self.body_ml_path = None 
+        self.head_glands_cavities_ml_path = None
+        self.total_ml_path = None
+        
+        # -----------------------------
+        # Stage 2: ROI Unification
+        # -----------------------------
+        self.tdt_roi_seg_path = None
 
         # -----------------------------
-        # Stage 2: Preprocessing
+        # Stage 3: Preprocessing
         # -----------------------------
         self.ct_arr = None
         self.roi_seg_arr = None
@@ -30,19 +36,19 @@ class Context:
         self.arr_px_spacing_cm = None
 
         # -----------------------------
-        # Stage 3: PBPK
+        # Stage 4: PBPK
         # -----------------------------
         self.activity_map_sum = None          # per-frame total activity [MBq], shape (n_frames,)
         self.activity_organ_sum = None        # dict organ -> per-frame activity [MBq]
         self.activity_map_paths_by_organ = None  # list of per-organ FIRST-frame activity maps (for SIMIND)
 
         # -----------------------------
-        # Stage 4: SIMIND
+        # Stage 5: SIMIND
         # -----------------------------
         self.spect_sim_output_dir = None      # where combined frame totals + calib.res live
 
         # -----------------------------
-        # Stage 5: Reconstruction
+        # Stage 6: Reconstruction
         # -----------------------------
         self.recon_paths = None
         self.recon_atn_img = None

@@ -23,9 +23,9 @@ class PbpkStage:
     # helpers
     # -----------------------------
     def _remove_background(self, class_seg):
-        if "Background" in class_seg:
+        if "background" in class_seg:  
             class_seg = dict(class_seg)
-            del class_seg["Background"]
+            del class_seg["background"]  
         return class_seg
 
     def _voxel_volume_ml(self, arr_px_spacing_cm):
@@ -46,8 +46,11 @@ class PbpkStage:
             "body": "Rest",
             "liver": "Liver",
             "prostate": "Prostate",
+            "heart": "Heart",              
+            "spleen": "Spleen",           
+            "salivary_glands": "SG",       
         }
-        return roi_to_voi.get(roi_name)
+        return roi_to_voi.get(roi_name, None)  
 
     def _save_tac_files(self, roi_name, time, tac_voi, tac_interp):
         roi_tag = roi_name.lower()
@@ -68,6 +71,7 @@ class PbpkStage:
             "sample_time": samp_time_f,
             "sample_values": samp_vals_f,
         }
+
     def _generate_time_activity_arr_roi(
         self,
         roi_name,
@@ -81,9 +85,18 @@ class PbpkStage:
     ):
         voi_name = self._roi_to_voi(roi_name)
 
+        if voi_name is None:  
+            if "Rest" in self.vois_pbpk:  
+                voi_name = "Rest"  
+            else:  
+                raise ValueError(  
+                    f"No VOI mapping for ROI '{roi_name}', and no 'Rest' VOI exists in the PBPK model "
+                    f"(supported: {sorted(self.vois_pbpk)})." 
+                )
+
         if voi_name not in self.vois_pbpk:
             if "Rest" in self.vois_pbpk:
-                voi_name = "Rest" # use 'Rest' VOI for unmapped ROIs
+                voi_name = "Rest"  # use 'Rest' VOI for unmapped ROIs
             else:
                 raise ValueError(
                     f"ROI '{roi_name}' maps to VOI '{voi_name}', but that VOI is not in the PBPK model "
@@ -111,8 +124,8 @@ class PbpkStage:
         # Organ sum per frame [MBq]
         organ_sum = np.sum(activity_map_organ, axis=(1, 2, 3)) * voxel_vol_ml
 
-        if voi_name not in saved_tacs:
-            saved_tacs[roi_name] = self._save_tac_files(roi_name, time, tac_voi, tac_interp)
+        if roi_name not in saved_tacs:  
+            saved_tacs[roi_name] = self._save_tac_files(roi_name, time, tac_voi, tac_interp)  
 
         return activity_map_organ, organ_sum, organ_map_path
 
@@ -120,16 +133,15 @@ class PbpkStage:
     # main
     # -----------------------------
     def run(self):
-        self.context.require("roi_body_seg_arr", "mask_roi_body", "class_seg", "arr_px_spacing_cm")
+        for k in ("roi_body_seg_arr", "mask_roi_body", "class_seg", "arr_px_spacing_cm"):  
+            if getattr(self.context, k, None) is None:  
+                raise AttributeError(f"Context missing required field: {k}")  
 
         roi_body_seg_arr = self.context.roi_body_seg_arr
         mask_roi_body = self.context.mask_roi_body
         class_seg = self._remove_background(self.context.class_seg)
         voxel_vol_ml = self._voxel_volume_ml(self.context.arr_px_spacing_cm)
 
-        print("arr_px_spacing_cm:", self.context.arr_px_spacing_cm)
-        print("voxel_vol_ml:", voxel_vol_ml)
-        
         time, tacs = self._run_psma_model()
 
         n_frames = len(self.frame_start)
@@ -161,14 +173,14 @@ class PbpkStage:
             activity_map[:, mask] = activity_map_organ[:, mask]
 
         activity_map_sum = np.sum(activity_map, axis=(1, 2, 3)) * voxel_vol_ml
-        
+
         # Save full maps per frame (optional, but kept)
         for i, frame in enumerate(activity_map):
             t = self.frame_start[i]
             p = os.path.join(self.output_dir, f"{self.prefix}_{t}_act_av.bin")
             frame.astype(np.float32).tofile(p)
 
-        # Update context 
+        # Update context
         self.context.activity_map_sum = activity_map_sum
         self.context.activity_organ_sum = activity_organ_sum
         self.context.activity_map_paths_by_organ = organ_paths

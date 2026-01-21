@@ -36,7 +36,7 @@ class SimindPreprocessStage:
         # name -> int_label, e.g. {"body":1,"kidney":2,...}
         self.tdt_name2id = {name: int(lab) for lab, name in ts_map_json["TDT_Pipeline"].items()}  
 
-        self.ct_path = context.ct_path
+        self.ct_nii_path = context.ct_nii_path
         self.body_ml_path = context.body_ml_path
         self.tdt_roi_seg_path = context.tdt_roi_seg_path  # unified TDT ROI seg
 
@@ -141,8 +141,8 @@ class SimindPreprocessStage:
     # -----------------------------
     def run(self):
         # ---- existence checks ----
-        if self.ct_path is None or not os.path.exists(self.ct_path):
-            raise FileNotFoundError(f"ct_path not found: {self.ct_path}")
+        if self.ct_nii_path is None or not os.path.exists(self.ct_nii_path):
+            raise FileNotFoundError(f"ct_nii_path not found: {self.ct_nii_path}")
 
         if self.body_ml_path is None or not os.path.exists(self.body_ml_path):
             raise FileNotFoundError(f"Body segmentation not found: {self.body_ml_path}")
@@ -151,7 +151,7 @@ class SimindPreprocessStage:
             raise FileNotFoundError(f"Unified TDT ROI seg not found: {self.tdt_roi_seg_path}")  
 
         # ---- load nifti ----
-        ct_nii = nib.load(self.ct_path)
+        ct_nii = nib.load(self.ct_nii_path)
         body_nii = nib.load(self.body_ml_path)
         roi_nii = nib.load(self.tdt_roi_seg_path)  
 
@@ -195,24 +195,16 @@ class SimindPreprocessStage:
         roi_arr.astype(np.float32).tofile(roi_body_bin)  
         
         # ---- update context ----
-        self.context.ct_arr = ct_arr
-        self.context.roi_seg_arr = roi_arr
         self.context.body_seg_arr = body_mask  
         self.context.roi_body_seg_arr = roi_arr 
 
         self.context.mask_roi_body = masks  
-        self.context.class_seg = class_seg
-        self.context.roi_subset = list(self.roi_subset)  
+        self.context.class_seg = class_seg 
 
         self.context.atn_av_path = atn_av_path
-        self.context.roi_seg_bin_path = roi_bin
-        self.context.body_seg_bin_path = body_bin
-        self.context.roi_body_seg_bin_path = roi_body_bin
 
-        self.context.arr_px_spacing_cm = arr_px_spacing_cm
-
-        self.context.extras["preprocess_scale_factor"] = float(scale)
-        self.context.extras["mu_pixel_size_cm_used"] = float(pixel_size_cm)
-        self.context.extras["tdt_label_map"] = dict(self.tdt_name2id)  
+        self.context.arr_px_spacing_cm = arr_px_spacing_cm # assuming CT and roi seg are same -> tuple
+        #self.context.arr_shape_original = np.array(ct_nii.get_fdata(dtype=np.float32)) # assuming CT and roi seg are same -> tuple
+        self.context.arr_shape_new = ct_arr.shape # assuming CT and roi seg are same -> tuple 
 
         return self.context

@@ -45,7 +45,7 @@ class TdtRoiUnifyStage:
         self.head_name2id  = {name: int(lab) for lab, name in self.ts_map_json["head_glands_cavities"].items()}
         self.tdt_name2id   = {name: int(lab) for lab, name in self.ts_map_json["TDT_Pipeline"].items()}
 
-        self.ct_path = context.ct_path
+        self.ct_nii_path = context.ct_nii_path
         self.body_ml_path = context.body_ml_path
         self.total_ml_path = context.total_ml_path
         self.head_ml_path = context.head_glands_cavities_ml_path
@@ -63,8 +63,8 @@ class TdtRoiUnifyStage:
         return arr.astype(np.int16) # only need int labels
 
     def _assert_inputs_exist(self):
-        if self.ct_path is None or not os.path.exists(self.ct_path):
-            raise FileNotFoundError(f"CT not found: {self.ct_path}")
+        if self.ct_nii_path is None or not os.path.exists(self.ct_nii_path):
+            raise FileNotFoundError(f"CT not found: {self.ct_nii_path}")
 
         if self.body_ml_path is None or not os.path.exists(self.body_ml_path):
             raise FileNotFoundError(f"Body seg not found: {self.body_ml_path}")
@@ -122,7 +122,7 @@ class TdtRoiUnifyStage:
     def run(self):
         self._assert_inputs_exist()
 
-        ct_nii = nib.load(self.ct_path)
+        ct_nii = nib.load(self.ct_nii_path)
 
         body_seg = self._load_int_seg(self.body_ml_path)
         total_seg = self._load_int_seg(self.total_ml_path) if self.plan["run_total"] else None

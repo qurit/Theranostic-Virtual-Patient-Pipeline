@@ -18,6 +18,9 @@ class PbpkStage:
         self.vois_pbpk = config["pbpk"]["VOIs"]
         self.frame_start = config["pbpk"]["FrameStartTimes"]
         self.frame_stop = max(self.frame_start)
+        
+        roi_body_seg_arr = self.context.roi_body_seg_arr
+        mask_roi_body = self.context.mask_roi_body
 
     # -----------------------------
     # helpers
@@ -136,9 +139,7 @@ class PbpkStage:
         for k in ("roi_body_seg_arr", "mask_roi_body", "class_seg", "arr_px_spacing_cm"):  
             if getattr(self.context, k, None) is None:  
                 raise AttributeError(f"Context missing required field: {k}")  
-
-        roi_body_seg_arr = self.context.roi_body_seg_arr
-        mask_roi_body = self.context.mask_roi_body
+            
         class_seg = self._remove_background(self.context.class_seg)
         voxel_vol_ml = self._voxel_volume_ml(self.context.arr_px_spacing_cm)
 
@@ -184,9 +185,5 @@ class PbpkStage:
         self.context.activity_map_sum = activity_map_sum
         self.context.activity_organ_sum = activity_organ_sum
         self.context.activity_map_paths_by_organ = organ_paths
-
-        # extras
-        self.context.extras["pbpk_output_dir"] = self.output_dir
-        self.context.extras["pbpk_saved_tacs"] = saved_tacs
 
         return self.context

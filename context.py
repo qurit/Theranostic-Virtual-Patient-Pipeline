@@ -3,37 +3,33 @@ class Context:
         # A place for optional debug / convenience info (not required by pipeline)
         self.extras = {}
 
+        # everything below is being actively used by the pipeline stages
         # -----------------------------
         # Stage 1: TotalSegmentator
         # -----------------------------
-        self.ct_path = None
-        self.body_ml_path = None 
-        self.head_glands_cavities_ml_path = None
-        self.total_ml_path = None
+        self.ct_nii_path = None # path to CT nii file -> from patient 
+        self.body_ml_path = None  # path to body seg -> from totalseg
+        self.head_glands_cavities_ml_path = None # path to head glands/cavities seg -> from totalseg
+        self.total_ml_path = None # path to total seg -> from totalseg
         
         # -----------------------------
         # Stage 2: ROI Unification
         # -----------------------------
-        self.tdt_roi_seg_path = None
+        self.tdt_roi_seg_path = None # path to unified TDT ROI seg -> from unify stage
 
         # -----------------------------
         # Stage 3: Preprocessing
         # -----------------------------
-        self.ct_arr = None
-        self.roi_seg_arr = None
-        self.body_seg_arr = None
-        self.roi_body_seg_arr = None
+        self.body_seg_arr = None   # preprocessed body seg array (simind grid)
+        self.roi_body_seg_arr = None  # preprocessed unified ROI seg array including body(simind grid)
 
-        self.mask_roi_body = None
-        self.class_seg = None
+        self.mask_roi_body = None   # dict of ROI name -> binary mask array (simind grid)
+        self.class_seg = None      # class segmentation map array (simind grid)
 
-        self.atn_av_path = None
-        self.roi_seg_bin_path = None
-        self.body_seg_bin_path = None
-        self.roi_body_seg_bin_path = None
-
-        self.roi_subset = None
-        self.arr_px_spacing_cm = None
+        self.atn_av_path = None      # path to attenuation map bin file -> from preprocessing stage
+        
+        self.arr_px_spacing_cm = None # assuming CT and roi seg are same
+        self.arr_shape_new = None # assuming CT and roi seg are same
 
         # -----------------------------
         # Stage 4: PBPK
@@ -50,9 +46,7 @@ class Context:
         # -----------------------------
         # Stage 6: Reconstruction
         # -----------------------------
-        self.recon_paths = None
-        self.recon_atn_img = None
-        self.recon_atn_path = None
+
 
     def require(self, *names):
         missing = []

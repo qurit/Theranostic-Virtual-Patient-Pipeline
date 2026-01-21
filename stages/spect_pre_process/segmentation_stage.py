@@ -41,6 +41,8 @@ class TotalSegmentationStage:
     def __init__(self, config, context):
         self.config = config
         self.context = context
+        
+        self.ct_nii_path = os.path.join(self.output_dir, f"{self.prefix}_ct.nii.gz")
 
         self.ct_input_path = config["ct_input"]["path1"]
         self.roi_subset = config["spect_preprocessing"]["roi_subset"]
@@ -53,14 +55,12 @@ class TotalSegmentationStage:
 
         self.prefix = config["spect_preprocessing"]["name"]
 
-        self.ct_path = None
+        self.ct_nii_path = None
         self.body_ml_path = None 
         self.head_glands_cavities_ml_path = None
         self.total_ml_path = None
 
     def _standardize_ct_to_nifti(self):
-        self.ct_nii_path = os.path.join(self.output_dir, f"{self.prefix}_ct.nii.gz")
-
         if os.path.exists(self.ct_nii_path):
             return
 
@@ -195,12 +195,11 @@ class TotalSegmentationStage:
             raise FileNotFoundError(f"Head glands seg not found: {self.head_glands_cavities_ml_path}")
 
         # --- update context ---
-        self.context.ct_path = self.ct_nii_path
+        self.context.ct_nii_path = self.ct_nii_path
         self.context.body_ml_path = self.body_ml_path
         self.context.total_ml_path = self.total_ml_path if plan["run_total"] else None
         self.context.head_glands_cavities_ml_path = (
             self.head_glands_cavities_ml_path if plan["run_head_glands_cavities"] else None
         )
-        self.context.extras["totseg_plan"] = plan
-            
+        
         return self.context

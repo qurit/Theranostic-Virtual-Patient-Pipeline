@@ -148,7 +148,7 @@ class SimindSimulationStage:
     def run(self):
         self.context.require(
             "class_seg",
-            "roi_seg_arr",
+            "roi_body_seg_arr",
             "activity_organ_sum",
             "activity_map_sum",
             "arr_px_spacing_cm",
@@ -157,7 +157,7 @@ class SimindSimulationStage:
         )
 
         class_seg = self.context.class_seg
-        roi_seg_arr = self.context.roi_seg_arr
+        arr_shape = self.context.arr_shape_new
         activity_organ_sum = self.context.activity_organ_sum
         activity_map_sum = self.context.activity_map_sum
         arr_px_spacing_cm = self.context.arr_px_spacing_cm
@@ -177,13 +177,13 @@ class SimindSimulationStage:
 
         input_slice_width = arr_px_spacing_cm[0]
         input_pixel_width = arr_px_spacing_cm[1]
-        input_half_length = input_slice_width * roi_seg_arr.shape[0] / 2.0
+        input_half_length = input_slice_width * arr_shape[0] / 2.0
 
-        output_img_length = input_slice_width * roi_seg_arr.shape[0] / self.output_slice_width
+        output_img_length = input_slice_width * arr_shape[0] / self.output_slice_width
 
         detector_width_cm = self.detector_width # cm
         if self.detector_length == 0:
-            detector_length_cm = roi_seg_arr.shape[0] * input_slice_width # cm
+            detector_length_cm = arr_shape[0] * input_slice_width # cm
         else:
             detector_length_cm = self.detector_length # cm
 
@@ -225,12 +225,12 @@ class SimindSimulationStage:
                 f"/28:{self.output_pixel_width}"
                 f"/29:{self.num_projections}"
                 f"/31:{input_pixel_width}"
-                f"/34:{roi_seg_arr.shape[0]}"
+                f"/34:{arr_shape[0]}"
                 f"/42:{self.detector_distance}"
                 f"/76:{self.output_img_size}"
                 f"/77:{output_img_length}"
-                f"/78:{roi_seg_arr.shape[1]}"
-                f"/79:{roi_seg_arr.shape[2]}"
+                f"/78:{arr_shape[1]}"
+                f"/79:{arr_shape[2]}"
             )
 
             self._run_simind_for_organ_cores(organ_name, simind_switches)
@@ -241,7 +241,6 @@ class SimindSimulationStage:
 
         self._run_jaszczak_calibration()
 
-        # pipeline-friendly + extras
         self.context.spect_sim_output_dir = self.output_dir
         self.context.extras["simind_output_dir"] = self.output_dir
         self.context.extras["simind_work_dir"] = self.work_dir

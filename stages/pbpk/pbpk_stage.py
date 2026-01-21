@@ -19,8 +19,8 @@ class PbpkStage:
         self.frame_start = config["pbpk"]["FrameStartTimes"]
         self.frame_stop = max(self.frame_start)
         
-        roi_body_seg_arr = self.context.roi_body_seg_arr
-        mask_roi_body = self.context.mask_roi_body
+        self.roi_body_seg_arr = self.context.roi_body_seg_arr
+        self.mask_roi_body = self.context.mask_roi_body
 
     # -----------------------------
     # helpers
@@ -36,11 +36,31 @@ class PbpkStage:
         return float(np.prod(arr_px_spacing_cm))  # cm^3 == mL
 
     def _run_psma_model(self):
-        time, tacs = pycno.run_model(
-            model_name="PSMA",
-            stop=self.frame_stop,
-            observables=self.vois_pbpk
-        )
+        """
+        parameters = {
+                    'bodyHeight': x,
+                    'bodyWeight': y,
+                    'Rden_Kidney': a,
+                    'Rden_SG': b,
+                    'lambdaRel': c,
+                    'lambdaRel_SG': d}
+                    
+        Randomly sample from a lognormal distribution given these mean and SDs
+        Parameter: (mean, sd)
+        Rden_SG: (60.0, 20.0)
+        Rden_Kidney: (30.0, 10.0)
+        lambdaRel_SG: (3.9e-4, 0.63e-4)
+        lambdaRel_Kidney: (2.88e-4, 0.55e-4)
+        """
+        
+        model = pycno.Model(model_name='PSMA', 
+                            hotamount=10, 
+                            coldamount=100) 
+        
+        time, tacs = model.simulate(stop=self.frame_stop, 
+                                    steps=self.frame_stop, 
+                                    observables=self.vois_pbpk)
+        
         return time, tacs
 
     def _roi_to_voi(self, roi_name):
@@ -146,7 +166,7 @@ class PbpkStage:
         time, tacs = self._run_psma_model()
 
         n_frames = len(self.frame_start)
-        activity_map = np.zeros((n_frames, *roi_body_seg_arr.shape), dtype=np.float32)
+        activity_map = np.zeros((n_frames, *self.roi_body_seg_arr.shape), dtype=np.float32)
 
         activity_organ_sum = {}
         organ_paths = []
@@ -156,8 +176,8 @@ class PbpkStage:
             out = self._generate_time_activity_arr_roi(
                 roi_name=roi_name,
                 label_value=label_value,
-                mask_roi_body=mask_roi_body,
-                roi_body_seg_arr=roi_body_seg_arr,
+                mask_roi_body=self.mask_roi_body,
+                roi_body_seg_arr=self.roi_body_seg_arr,
                 voxel_vol_ml=voxel_vol_ml,
                 time=time,
                 tacs=tacs,
@@ -170,7 +190,7 @@ class PbpkStage:
             organ_paths.append(organ_map_path)
             activity_organ_sum[roi_name] = organ_sum
 
-            mask = mask_roi_body[label_value]
+            mask = self.mask_roi_body[label_value]
             activity_map[:, mask] = activity_map_organ[:, mask]
 
         activity_map_sum = np.sum(activity_map, axis=(1, 2, 3)) * voxel_vol_ml

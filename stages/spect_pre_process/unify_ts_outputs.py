@@ -50,9 +50,9 @@ class TdtRoiUnifyStage:
         self.total_ml_path = context.total_ml_path
         self.head_ml_path = context.head_glands_cavities_ml_path
 
-        self.plan = context.extras.get("totseg_plan", None)
+        self.plan = context.totseg_plan
         if self.plan is None:
-            raise ValueError("Missing context.extras['totseg_plan']; run TotalSegmentationStage first.")
+            raise ValueError("Missing context.totseg_plan; run TotalSegmentationStage first.")
 
     # -----------------------------
     # helpers

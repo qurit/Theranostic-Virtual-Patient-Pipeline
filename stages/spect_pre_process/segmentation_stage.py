@@ -41,8 +41,6 @@ class TotalSegmentationStage:
     def __init__(self, config, context):
         self.config = config
         self.context = context
-        
-        self.ct_nii_path = os.path.join(self.output_dir, f"{self.prefix}_ct.nii.gz")
 
         self.ct_input_path = config["ct_input"]["path1"]
         self.roi_subset = config["spect_preprocessing"]["roi_subset"]
@@ -61,6 +59,7 @@ class TotalSegmentationStage:
         self.total_ml_path = None
 
     def _standardize_ct_to_nifti(self):
+        self.ct_nii_path = os.path.join(self.output_dir, f"{self.prefix}_ct.nii.gz")
         if os.path.exists(self.ct_nii_path):
             return
 
@@ -201,5 +200,6 @@ class TotalSegmentationStage:
         self.context.head_glands_cavities_ml_path = (
             self.head_glands_cavities_ml_path if plan["run_head_glands_cavities"] else None
         )
+        self.context.totseg_plan = plan
         
         return self.context

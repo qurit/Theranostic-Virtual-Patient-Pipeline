@@ -11,6 +11,7 @@ class Context:
         self.body_ml_path = None  # path to body seg -> from totalseg
         self.head_glands_cavities_ml_path = None # path to head glands/cavities seg -> from totalseg
         self.total_ml_path = None # path to total seg -> from totalseg
+        self.totseg_plan = None  # plan dict from segmentation stage
         
         # -----------------------------
         # Stage 2: ROI Unification

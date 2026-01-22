@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import pycno
+import nibabel as nib
+import pydicom
 
 
 class PbpkStage:
@@ -12,6 +14,8 @@ class PbpkStage:
         output_root = config["output_folder"]["title"]
         self.output_dir = os.path.join(output_root, subdir_name)
         os.makedirs(self.output_dir, exist_ok=True)
+        
+        self.ct_input_path = config["ct_input"]["path1"]
 
         self.prefix = config["pbpk"]["name"]
 
@@ -34,33 +38,149 @@ class PbpkStage:
     def _voxel_volume_ml(self, arr_px_spacing_cm):
         arr_px_spacing_cm = np.asarray(arr_px_spacing_cm, dtype=float)
         return float(np.prod(arr_px_spacing_cm))  # cm^3 == mL
+    
+    def _sample_lognormal_from_mean_sd(self, mean, sd):
+        """
+        Sample LogNormal such that the *resulting* distribution has the requested mean and sd.
+
+        If X ~ LogNormal(mu, sigma^2), then:
+          E[X] = exp(mu + sigma^2/2)
+          Var[X] = (exp(sigma^2)-1) * exp(2mu + sigma^2)
+
+        Solve:
+          sigma^2 = ln(1 + (sd^2 / mean^2))
+          mu      = ln(mean) - sigma^2/2
+        """
+        mean = float(mean)
+        sd = float(sd)
+        if mean <= 0 or sd <= 0:
+            raise ValueError(f"mean and sd must be > 0 for lognormal (got mean={mean}, sd={sd})")
+
+        sigma2 = np.log(1.0 + (sd * sd) / (mean * mean))
+        sigma = np.sqrt(sigma2)
+        mu = np.log(mean) - 0.5 * sigma2
+        return float(np.random.lognormal(mean=mu, sigma=sigma))
+
+    def _extract_height_weight_from_dicom_dir(self, dicom_dir):
+        """
+        DICOM tags:
+          PatientSize   (0010,1020) -> meters
+          PatientWeight (0010,1030) -> kg
+        Returns (height_m, weight_kg) where either may be None.
+        """
+        if pydicom is None:
+            return None, None
+        if not os.path.isdir(dicom_dir):
+            return None, None
+
+        # try a handful of files; many DICOMs have no extension
+        candidates = []
+        for name in sorted(os.listdir(dicom_dir)):
+            path = os.path.join(dicom_dir, name)
+            if os.path.isfile(path):
+                candidates.append(path)
+            if len(candidates) >= 50:
+                break
+
+        for path in candidates:
+            try:
+                ds = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+                height = getattr(ds, "PatientSize", None)   # meters
+                weight = getattr(ds, "PatientWeight", None) # kg
+
+                # sanitize
+                height = float(height) if height not in (None, "", " ") else None
+                weight = float(weight) if weight not in (None, "", " ") else None
+
+                if height is not None and height <= 0:
+                    height = None
+                if weight is not None and weight <= 0:
+                    weight = None
+
+                # If we found at least one, return (even if the other is None)
+                if height is not None or weight is not None:
+                    return height, weight
+            except Exception:
+                continue
+
+        return None, None
+
+    def _parameter_check(self):
+        """
+        Check inputs and build PBPK parameters.
+
+        Template keys:
+          bodyHeight (optional), bodyWeight (optional),
+          Rden_Kidney, Rden_SG,
+          lambdaRel (kidney), lambdaRel_SG
+        """
+
+        # ---- basic validation ----
+        if not hasattr(self, "ct_input_path"):
+            raise AttributeError("PbpkStage is missing self.ct_input_path")
+        if not os.path.exists(self.ct_input_path):
+            raise ValueError(f"CT input path does not exist: {self.ct_input_path}")
+
+        if not isinstance(self.vois_pbpk, (list, tuple)) or len(self.vois_pbpk) == 0:
+            raise ValueError("PBPK VOIs must be a non-empty list/tuple")
+
+        # allow list/tuple/np array for frame_start
+        if not isinstance(self.frame_start, (list, tuple, np.ndarray)) or len(self.frame_start) == 0:
+            raise ValueError("Frame start times must be a non-empty list/tuple/array")
+
+        frame_start = np.asarray(self.frame_start, dtype=float)
+        if not np.all(np.isfinite(frame_start)):
+            raise ValueError("Frame start times contain non-finite values")
+        if np.any(frame_start < 0):
+            raise ValueError("Frame start times must be >= 0")
+
+        # ---- sample physiological parameters ----
+        # (mean, sd) — update if you change literature values
+        recep_dens_kidney = self._sample_lognormal_from_mean_sd(30.0, 10.0)     # nmol/L 
+        recep_dens_sg     = self._sample_lognormal_from_mean_sd(60.0, 20.0)     # nmol/L
+        lambda_rel_kidney = self._sample_lognormal_from_mean_sd(2.88e-4, 0.55e-4)
+        lambda_rel_sg     = self._sample_lognormal_from_mean_sd(3.9e-4, 0.63e-4)
+
+        # ---- optional height/weight from DICOM ----
+        height = None
+        weight = None
+        if os.path.isdir(self.ct_input_path):
+            height, weight = self._extract_height_weight_from_dicom_dir(self.ct_input_path)
+
+        # ---- build parameters dict (only include height/weight if found) ----
+        parameters = {
+            "Rden_Kidney": recep_dens_kidney,
+            "Rden_SG": recep_dens_sg,
+            "lambdaRel": lambda_rel_kidney,
+            "lambdaRel_SG": lambda_rel_sg,
+        }
+        if height is not None:
+            parameters["bodyHeight"] = height
+        if weight is not None:
+            parameters["bodyWeight"] = weight
+
+        return parameters
 
     def _run_psma_model(self):
-        """
-        parameters = {
-                    'bodyHeight': x,
-                    'bodyWeight': y,
-                    'Rden_Kidney': a,
-                    'Rden_SG': b,
-                    'lambdaRel': c,
-                    'lambdaRel_SG': d}
-                    
-        Randomly sample from a lognormal distribution given these mean and SDs
-        Parameter: (mean, sd)
-        Rden_SG: (60.0, 20.0)
-        Rden_Kidney: (30.0, 10.0)
-        lambdaRel_SG: (3.9e-4, 0.63e-4)
-        lambdaRel_Kidney: (2.88e-4, 0.55e-4)
-        """
-        
-        model = pycno.Model(model_name='PSMA', 
-                            hotamount=10, 
-                            coldamount=100) 
-        
-        time, tacs = model.simulate(stop=self.frame_stop, 
-                                    steps=self.frame_stop, 
-                                    observables=self.vois_pbpk)
-        
+        """Generate random physiological parameters and run PBPK model."""
+        parameters = self._parameter_check()
+
+        model = pycno.Model(
+            model_name="PSMA",
+            hotamount=10,
+            coldamount=100,
+            parameters=parameters,
+        )
+
+        # PyCNO expects numeric stop/steps; keep your behavior but ensure int steps
+        stop = int(self.frame_stop)
+        steps = int(np.ceil(stop)) if stop > 0 else 1
+
+        time, tacs = model.simulate(
+            stop=stop,
+            steps=steps,
+            observables=self.vois_pbpk,
+        )
         return time, tacs
 
     def _roi_to_voi(self, roi_name):

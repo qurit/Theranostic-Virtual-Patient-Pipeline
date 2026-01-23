@@ -151,7 +151,7 @@ class PbpkStage:
         parameters = {
             "Rden_Kidney": recep_dens_kidney,
             "Rden_SG": recep_dens_sg,
-            "lambdaRel": lambda_rel_kidney,
+            "lambdaRel_Kidney": lambda_rel_kidney,
             "lambdaRel_SG": lambda_rel_sg,
         }
         if height is not None:

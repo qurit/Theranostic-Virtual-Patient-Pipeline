@@ -5,9 +5,6 @@
     "mode" : { // Mode can be "DEBUG" or "PRODUCTION"
         "mode" : "DEBUG" 
     },
-    "ct_input": { // Input CT scan parameters
-        "path1": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/inputs/CT"
-    },
     "output_folder": {
         "title": "TDT_Output_DEBUG" // Output folder name
     },

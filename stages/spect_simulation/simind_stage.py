@@ -19,6 +19,8 @@ class SimindSimulationStage:
         os.makedirs(self.work_dir, exist_ok=True)
 
         self.prefix = config["spect_simulation"]["name"]
+        
+        self.mode = str(config["mode"]["mode"]).strip().lower() # if production, will delete work files after run
 
         self.frame_start = config["pbpk"]["FrameStartTimes"]
         self.frame_durations = config["pbpk"]["FrameDurations"] # seconds, len(frame_start)
@@ -115,14 +117,29 @@ class SimindSimulationStage:
         xtot_w1 = 0
         xtot_w2 = 0
         xtot_w3 = 0
-
+        
         for j in range(self.num_cores):
-            w1 = np.fromfile(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w1.a00"), dtype=np.float32)
-            w2 = np.fromfile(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w2.a00"), dtype=np.float32)
-            w3 = np.fromfile(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w3.a00"), dtype=np.float32)
+            p1 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w1.a00")
+            p2 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w2.a00")
+            p3 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w3.a00")
+
+            w1 = np.fromfile(p1, dtype=np.float32)
+            w2 = np.fromfile(p2, dtype=np.float32)
+            w3 = np.fromfile(p3, dtype=np.float32)
+            
+            
+            
             xtot_w1 += w1
             xtot_w2 += w2
             xtot_w3 += w3
+            
+            if self.mode == "production":
+                for p in (p1, p2, p3):
+                    try:
+                        os.remove(p)  # .a00
+                    except FileNotFoundError:
+                        pass
+                
 
         xtot_w1 /= self.num_cores
         xtot_w2 /= self.num_cores
@@ -144,6 +161,8 @@ class SimindSimulationStage:
 
         for p in processes:
             p.wait()
+    def _organ_headers_exist(self, organ_name):
+        return os.path.exists(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_0_tot_w2.h00"))
 
     def run(self):
         self.context.require(
@@ -195,9 +214,8 @@ class SimindSimulationStage:
         for index, act_path in enumerate(organ_act_paths):
             organ_name = roi_list[index]
 
-            if self._organ_totals_exist(organ_name):
+            if self._organ_totals_exist(organ_name) and self._organ_headers_exist(organ_name):
                 continue
-
             if not os.path.exists(act_path):
                 raise FileNotFoundError(f"Activity map not found: {act_path}")
 

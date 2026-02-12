@@ -17,11 +17,13 @@ class PbpkStage:
         
         self.ct_input_path = config["ct_input"]["path1"]
 
-        self.prefix = config["pbpk"]["name"]
 
+        self.prefix = config["pbpk"]["name"]
         self.vois_pbpk = config["pbpk"]["VOIs"]
         self.frame_start = config["pbpk"]["FrameStartTimes"]
-        self.frame_stop = max(self.frame_start)
+        self.randomize_kidney_sg_para = config["pbpk"]["Randomization_Kidney_SG_Para"] # bool
+        self.frame_stop = max(self.frame_start) if self.frame_start else 0
+        
         
         self.roi_body_seg_arr = self.context.roi_body_seg_arr
         self.mask_roi_body = self.context.mask_roi_body
@@ -133,43 +135,57 @@ class PbpkStage:
             raise ValueError("Frame start times contain non-finite values")
         if np.any(frame_start < 0):
             raise ValueError("Frame start times must be >= 0")
+        
+        
+        parameters = {}
+        # ---- Kidney and SG RDen and LamdaRel ----
+        if not isinstance(self.randomize_kidney_sg_para,bool):
+            raise ValueError("Randomize Parameter must be only True or False in Config")
+        
+        vois_set = {str(v).strip().lower() for v in (self.vois_pbpk or [])}
+        has_kidney = ("kidney" in vois_set)
+        has_sg = ("sg" in vois_set) or any("salivary" in v for v in vois_set)
+        
+        if self.randomize_kidney_sg_para:
+            if has_sg:
+                recep_dens_sg = self._sample_lognormal_from_mean_sd(60.0, 20.0)     # nmol/L
+                lambda_rel_sg = self._sample_lognormal_from_mean_sd(3.9e-4, 0.63e-4)
+                parameters["Rden_SG"] = recep_dens_sg
+                parameters["lambdaRel_SG"] = lambda_rel_sg
 
-        # ---- sample physiological parameters ----
-        # (mean, sd) — update if you change literature values
-        recep_dens_kidney = self._sample_lognormal_from_mean_sd(30.0, 10.0)     # nmol/L 
-        recep_dens_sg     = self._sample_lognormal_from_mean_sd(60.0, 20.0)     # nmol/L
-        lambda_rel_kidney = self._sample_lognormal_from_mean_sd(2.88e-4, 0.55e-4)
-        lambda_rel_sg     = self._sample_lognormal_from_mean_sd(3.9e-4, 0.63e-4)
-
-        # ---- optional height/weight from DICOM ----
-        height = None
-        weight = None
+            if has_kidney:
+                recep_dens_kidney = self._sample_lognormal_from_mean_sd(30.0, 10.0)  # nmol/L
+                lambda_rel_kidney = self._sample_lognormal_from_mean_sd(2.88e-4, 0.55e-4)
+                parameters["Rden_Kidney"] = recep_dens_kidney
+                parameters["lambdaRel_Kidney"] = lambda_rel_kidney
+                    
+        # ---- Height and Weight ----
+        self.height = None
+        self.weight = None
         if os.path.isdir(self.ct_input_path):
-            height, weight = self._extract_height_weight_from_dicom_dir(self.ct_input_path)
+            self.height, self.weight = self._extract_height_weight_from_dicom_dir(self.ct_input_path)
 
-        # ---- build parameters dict (only include height/weight if found) ----
-        parameters = {
-            "Rden_Kidney": recep_dens_kidney,
-            "Rden_SG": recep_dens_sg,
-            "lambdaRel_Kidney": lambda_rel_kidney,
-            "lambdaRel_SG": lambda_rel_sg,
-        }
-        if height is not None:
-            parameters["bodyHeight"] = height
-        if weight is not None:
-            parameters["bodyWeight"] = weight
+        if self.height is not None:
+            parameters["bodyHeight"] = self.height
+        if self.weight is not None:
+            parameters["bodyWeight"] = self.weight
 
         return parameters
 
     def _run_psma_model(self):
         """Generate random physiological parameters and run PBPK model."""
-        parameters = self._parameter_check()
+        self.parameters = self._parameter_check()
+        
+        # save provenance early
+        self.context.pbpk_height_m = getattr(self, "height", None)
+        self.context.pbpk_weight_kg = getattr(self, "weight", None)
+        self.context.pbpk_parameters = dict(self.parameters) if self.parameters is not None else None
 
         model = pycno.Model(
             model_name="PSMA",
             hotamount=10,
             coldamount=100,
-            parameters=parameters,
+            parameters=self.parameters,
         )
 
         # PyCNO expects numeric stop/steps; keep your behavior but ensure int steps
@@ -325,5 +341,6 @@ class PbpkStage:
         self.context.activity_map_sum = activity_map_sum
         self.context.activity_organ_sum = activity_organ_sum
         self.context.activity_map_paths_by_organ = organ_paths
+        
 
         return self.context

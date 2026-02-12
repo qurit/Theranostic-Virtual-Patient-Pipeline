@@ -40,6 +40,9 @@ class Context:
         self.activity_map_sum = None
         self.activity_organ_sum = None
         self.activity_map_paths_by_organ = None
+        self.pbpk_height_m = None
+        self.pbpk_weight_kg = None
+        self.pbpk_parameters = None
 
         # -----------------------------
         # Stage 5: SIMIND

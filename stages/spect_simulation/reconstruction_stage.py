@@ -3,6 +3,7 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 import pytomography
+import shutil
 
 from pytomography.algorithms import OSEM
 from pytomography.io.SPECT import simind
@@ -10,6 +11,8 @@ from pytomography.io.shared import get_header_value
 from pytomography.likelihoods import PoissonLogLikelihood
 from pytomography.projectors.SPECT import SPECTSystemMatrix
 from pytomography.transforms.SPECT import SPECTAttenuationTransform, SPECTPSFTransform
+
+
 
 
 class SpectReconstructionStage:
@@ -29,9 +32,12 @@ class SpectReconstructionStage:
             self.output_dir = os.path.join(output_root, subdir_name)
 
         os.makedirs(self.output_dir, exist_ok=True)
+        
+        self.mode = str(config["mode"]["mode"]).strip().lower()
 
         # header_dir: where SIMIND wrote .h00/.cor/.hct (work_dir)
         self.header_dir = context.extras.get("simind_work_dir", self.output_dir)
+        
 
         self.prefix = config["spect_simulation"]["name"]
 
@@ -164,8 +170,8 @@ class SpectReconstructionStage:
             cor_path = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0.cor")
             if not os.path.exists(cor_path):
                 raise FileNotFoundError(f"Missing COR file: {cor_path}")
-            cor_path_new = self._get_cor_data(cor_path)
-            object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h, cor_path_new)
+            _ = self._get_cor_data(cor_path)
+            object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h, cor_path)
         else: 
             object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h)
 
@@ -250,8 +256,24 @@ class SpectReconstructionStage:
             recon_paths.append(recon_output_path)
 
         recon_atn_img, recon_atn_path = self._write_recon_atn_img(amap)
+        
+        all_frames_exist = all(
+            os.path.exists(os.path.join(self.output_dir, f"{self.prefix}_{t}min.nii"))
+            for t in self.frame_start)
+        
+        if self.mode == "production" and all_frames_exist:
+            work_dir = self.context.extras.get("simind_work_dir", None)
 
-        # Update context
+            # only delete if it's a separate work directory (not your main output_dir)
+            if work_dir:
+                work_dir_abs = os.path.abspath(work_dir)
+                out_abs = os.path.abspath(self.output_dir)
+
+                # guardrails to avoid nuking outputs by mistake
+                if work_dir_abs != out_abs and os.path.exists(work_dir_abs):
+                    shutil.rmtree(work_dir_abs, ignore_errors=True)
+
+        # Update context -> for now not needed downstream
         #self.context.spect_sim_output_dir = self.output_dir
         #self.context.recon_paths = recon_paths
         #self.context.recon_atn_img = recon_atn_img

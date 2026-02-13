@@ -19,6 +19,8 @@ class SimindSimulationStage:
         os.makedirs(self.work_dir, exist_ok=True)
 
         self.prefix = config["spect_simulation"]["name"]
+        
+        self.mode = str(config["mode"]["mode"]).strip().lower() # if production, will delete work files after run
 
         self.frame_start = config["pbpk"]["FrameStartTimes"]
         self.frame_durations = config["pbpk"]["FrameDurations"] # seconds, len(frame_start)
@@ -115,14 +117,29 @@ class SimindSimulationStage:
         xtot_w1 = 0
         xtot_w2 = 0
         xtot_w3 = 0
-
+        
         for j in range(self.num_cores):
-            w1 = np.fromfile(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w1.a00"), dtype=np.float32)
-            w2 = np.fromfile(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w2.a00"), dtype=np.float32)
-            w3 = np.fromfile(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w3.a00"), dtype=np.float32)
+            p1 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w1.a00")
+            p2 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w2.a00")
+            p3 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w3.a00")
+
+            w1 = np.fromfile(p1, dtype=np.float32)
+            w2 = np.fromfile(p2, dtype=np.float32)
+            w3 = np.fromfile(p3, dtype=np.float32)
+            
+            
+            
             xtot_w1 += w1
             xtot_w2 += w2
             xtot_w3 += w3
+            
+            if self.mode == "production":
+                for p in (p1, p2, p3):
+                    try:
+                        os.remove(p)  # .a00
+                    except FileNotFoundError:
+                        pass
+                
 
         xtot_w1 /= self.num_cores
         xtot_w2 /= self.num_cores
@@ -144,11 +161,13 @@ class SimindSimulationStage:
 
         for p in processes:
             p.wait()
+    def _organ_headers_exist(self, organ_name):
+        return os.path.exists(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_0_tot_w2.h00"))
 
     def run(self):
         self.context.require(
             "class_seg",
-            "roi_seg_arr",
+            "roi_body_seg_arr",
             "activity_organ_sum",
             "activity_map_sum",
             "arr_px_spacing_cm",
@@ -157,7 +176,7 @@ class SimindSimulationStage:
         )
 
         class_seg = self.context.class_seg
-        roi_seg_arr = self.context.roi_seg_arr
+        arr_shape = self.context.arr_shape_new
         activity_organ_sum = self.context.activity_organ_sum
         activity_map_sum = self.context.activity_map_sum
         arr_px_spacing_cm = self.context.arr_px_spacing_cm
@@ -177,13 +196,13 @@ class SimindSimulationStage:
 
         input_slice_width = arr_px_spacing_cm[0]
         input_pixel_width = arr_px_spacing_cm[1]
-        input_half_length = input_slice_width * roi_seg_arr.shape[0] / 2.0
+        input_half_length = input_slice_width * arr_shape[0] / 2.0
 
-        output_img_length = input_slice_width * roi_seg_arr.shape[0] / self.output_slice_width
+        output_img_length = input_slice_width * arr_shape[0] / self.output_slice_width
 
         detector_width_cm = self.detector_width # cm
         if self.detector_length == 0:
-            detector_length_cm = roi_seg_arr.shape[0] * input_slice_width # cm
+            detector_length_cm = arr_shape[0] * input_slice_width # cm
         else:
             detector_length_cm = self.detector_length # cm
 
@@ -195,9 +214,8 @@ class SimindSimulationStage:
         for index, act_path in enumerate(organ_act_paths):
             organ_name = roi_list[index]
 
-            if self._organ_totals_exist(organ_name):
+            if self._organ_totals_exist(organ_name) and self._organ_headers_exist(organ_name):
                 continue
-
             if not os.path.exists(act_path):
                 raise FileNotFoundError(f"Activity map not found: {act_path}")
 
@@ -225,12 +243,12 @@ class SimindSimulationStage:
                 f"/28:{self.output_pixel_width}"
                 f"/29:{self.num_projections}"
                 f"/31:{input_pixel_width}"
-                f"/34:{roi_seg_arr.shape[0]}"
+                f"/34:{arr_shape[0]}"
                 f"/42:{self.detector_distance}"
                 f"/76:{self.output_img_size}"
                 f"/77:{output_img_length}"
-                f"/78:{roi_seg_arr.shape[1]}"
-                f"/79:{roi_seg_arr.shape[2]}"
+                f"/78:{arr_shape[1]}"
+                f"/79:{arr_shape[2]}"
             )
 
             self._run_simind_for_organ_cores(organ_name, simind_switches)
@@ -241,7 +259,6 @@ class SimindSimulationStage:
 
         self._run_jaszczak_calibration()
 
-        # pipeline-friendly + extras
         self.context.spect_sim_output_dir = self.output_dir
         self.context.extras["simind_output_dir"] = self.output_dir
         self.context.extras["simind_work_dir"] = self.work_dir

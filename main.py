@@ -4,6 +4,7 @@ from json_minify import json_minify
 import logging
 import time
 import shutil
+import argparse
 
 from context import Context
 
@@ -248,3 +249,4 @@ if __name__ == "__main__":
                 print(f"Processing CT {ct_indx}: {dicom_path}")
                 pipeline = TdtPipeline(config_path, dicom_path, ct_indx)
                 pipeline.run()
+

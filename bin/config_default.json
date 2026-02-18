@@ -4,7 +4,7 @@
 
 { 
     "mode" : { // Mode can be "DEBUG" or "PRODUCTION"
-        "mode" : "PRODUCTION" 
+        "mode" : "DEBUG" 
     },
     "output_folder": {
         "title": "TDT_Output_" // Output folder name, should say this title plus CT name

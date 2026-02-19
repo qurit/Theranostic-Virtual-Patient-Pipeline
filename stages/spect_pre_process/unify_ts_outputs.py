@@ -21,19 +21,16 @@ class TdtRoiUnifyStage:
       7 salivary_glands
     """
 
-    def __init__(self, config, context):
-        self.config = config
+    def __init__(self, context):
         self.context = context
 
-        subdir_name = config["subdir_names"]["spect_preprocessing"]
-        output_root = config["output_folder"]["title"]
-        self.output_dir = os.path.join(output_root, subdir_name)
+        self.output_dir = context.subdir_paths["spect_preprocessing"]  
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.prefix = config["spect_preprocessing"]["name"]
+        self.prefix = context.config["spect_preprocessing"]["name"]
 
-        # class map json path
-        self.ts_map_path = "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/data/tdt_map.json"
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) 
+        self.ts_map_path = os.path.join(repo_root, "data", "tdt_map.json") 
         if not os.path.exists(self.ts_map_path):
             raise FileNotFoundError(f"Class map json not found: {self.ts_map_path}")
 
@@ -60,7 +57,7 @@ class TdtRoiUnifyStage:
     @staticmethod
     def _load_int_seg(path):
         arr = nib.load(path).get_fdata()
-        return arr.astype(np.int16) # only need int labels
+        return arr.astype(np.int16)  # only need int labels
 
     def _assert_inputs_exist(self):
         if self.ct_nii_path is None or not os.path.exists(self.ct_nii_path):
@@ -76,7 +73,7 @@ class TdtRoiUnifyStage:
         if self.plan.get("run_head_glands_cavities", False):
             if self.head_ml_path is None or not os.path.exists(self.head_ml_path):
                 raise FileNotFoundError(f"Head seg not found: {self.head_ml_path}")
-    
+
     def _create_roi_unified(self, body_seg, total_seg, head_seg):
         # Start output with background
         roi_unified = np.zeros(body_seg.shape, dtype=np.uint8)
@@ -112,9 +109,8 @@ class TdtRoiUnifyStage:
             sL = self.head_name2id["submandibular_gland_left"]
             sR = self.head_name2id["submandibular_gland_right"]
             roi_unified[np.isin(head_seg, [pL, pR, sL, sR])] = self.tdt_name2id["salivary_glands"]
-        
+
         return roi_unified
-        
 
     # -----------------------------
     # main

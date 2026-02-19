@@ -13,46 +13,40 @@ from pytomography.projectors.SPECT import SPECTSystemMatrix
 from pytomography.transforms.SPECT import SPECTAttenuationTransform, SPECTPSFTransform
 
 
-
-
 class SpectReconstructionStage:
-    def __init__(self, config, context):
-        self.config = config
+    def __init__(self, context):
         self.context = context
 
-        # output_dir: where frame totals + calib.res are 
+        # output_dir: where frame totals + calib.res are
         self.output_dir = getattr(context, "spect_sim_output_dir", None)
         if self.output_dir is None:
             self.output_dir = context.extras.get("simind_output_dir", None)
 
         # fallback (if user runs recon standalone)
         if self.output_dir is None:
-            subdir_name = config["subdir_names"]["spect_simulation"]
-            output_root = config["output_folder"]["title"]
-            self.output_dir = os.path.join(output_root, subdir_name)
+            self.output_dir = context.subdir_paths["spect_simulation"] 
 
         os.makedirs(self.output_dir, exist_ok=True)
-        
-        self.mode = str(config["mode"]["mode"]).strip().lower()
+
+        self.mode = context.mode 
 
         # header_dir: where SIMIND wrote .h00/.cor/.hct (work_dir)
         self.header_dir = context.extras.get("simind_work_dir", self.output_dir)
-        
 
-        self.prefix = config["spect_simulation"]["name"]
+        self.prefix = context.config["spect_simulation"]["name"]
 
-        self.frame_start = config["pbpk"]["FrameStartTimes"]
-        self.frame_durations = config["pbpk"]["FrameDurations"] # in seconds, len(frame_start)
+        self.frame_start = context.config["pbpk"]["FrameStartTimes"]
+        self.frame_durations = context.config["pbpk"]["FrameDurations"]  # in seconds, len(frame_start)
 
-        self.iterations = config["spect_simulation"]["Iterations"]
-        self.subsets = config["spect_simulation"]["Subsets"]
-        self.output_pixel_width = config["spect_simulation"]["OutputPixelWidth"]
-        self.output_slice_width = config["spect_simulation"]["OutputSliceWidth"]
-        self.detector_distance = config["spect_simulation"]["DetectorDistance"]
+        self.iterations = context.config["spect_simulation"]["Iterations"]
+        self.subsets = context.config["spect_simulation"]["Subsets"]
+        self.output_pixel_width = context.config["spect_simulation"]["OutputPixelWidth"]
+        self.output_slice_width = context.config["spect_simulation"]["OutputSliceWidth"]
+        self.detector_distance = context.config["spect_simulation"]["DetectorDistance"]
 
         self.output_tuple = (self.output_pixel_width, self.output_pixel_width, self.output_slice_width)
-        
-        self.recon_algorithm = config["spect_simulation"]["ReconstructionAlgorithm"]
+
+        self.recon_algorithm = context.config["spect_simulation"]["ReconstructionAlgorithm"]
 
     # -----------------------------
     # helpers
@@ -101,31 +95,31 @@ class SpectReconstructionStage:
     def _convert_counts_to_mbq_per_ml(self, reconstructed_image, sensitivity, frame_duration,
                                      output_pixel_width, output_slice_width):
         return (
-            reconstructed_image.cpu().T # counts
-            / sensitivity # counts / s / MBq
-            / frame_duration # sec
-            / (output_pixel_width ** 2) # cm^2
-            / output_slice_width # cm
-        ) # MBq / cm^3 = MBq / ml
+            reconstructed_image.cpu().T  # counts
+            / sensitivity                 # counts / s / MBq
+            / frame_duration              # sec
+            / (output_pixel_width ** 2)   # cm^2
+            / output_slice_width          # cm
+        )  # MBq / cm^3 = MBq / ml
 
     def _get_recon_img(self, likelihood, sensitivity, frame_duration):
         if self.recon_algorithm.lower() == "osem":
             recon_algorithm = OSEM(likelihood)
         else:
-            raise ValueError(f"Unsupported reconstruction algorithm: {self.recon_algorithm}") # TODO: will need add more later
-        
+            raise ValueError(f"Unsupported reconstruction algorithm: {self.recon_algorithm}")
+
         reconstructed_image = recon_algorithm(
             n_iters=self.iterations,
             n_subsets=self.subsets,
         )
 
         recon_img_arr = self._convert_counts_to_mbq_per_ml(
-            reconstructed_image, 
-            sensitivity, 
-            frame_duration , 
-            self.output_pixel_width, 
-            self.output_slice_width, 
-        ) # MBq / ml
+            reconstructed_image,
+            sensitivity,
+            frame_duration,
+            self.output_pixel_width,
+            self.output_slice_width,
+        )  # MBq / ml
 
         recon_img = sitk.GetImageFromArray(recon_img_arr)
         recon_img.SetSpacing(self.output_tuple)
@@ -150,7 +144,7 @@ class SpectReconstructionStage:
         self.context.require("class_seg")
 
         roi_list = list(self.context.class_seg.keys())
-        
+
         # sensitivity comes from output_dir (calibration runs in output_dir)
         calibration_file = os.path.join(self.output_dir, "calib.res")
         if not os.path.exists(calibration_file):
@@ -172,7 +166,7 @@ class SpectReconstructionStage:
                 raise FileNotFoundError(f"Missing COR file: {cor_path}")
             _ = self._get_cor_data(cor_path)
             object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h, cor_path)
-        else: 
+        else:
             object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h)
 
         proj_dim1, proj_dim2, num_proj, ww_peak, ww_lower, ww_upper = self._get_metadata_from_header(
@@ -256,12 +250,13 @@ class SpectReconstructionStage:
             recon_paths.append(recon_output_path)
 
         recon_atn_img, recon_atn_path = self._write_recon_atn_img(amap)
-        
+
         all_frames_exist = all(
             os.path.exists(os.path.join(self.output_dir, f"{self.prefix}_{t}min.nii"))
-            for t in self.frame_start)
-        
-        if self.mode == "production" and all_frames_exist:
+            for t in self.frame_start
+        )
+
+        if self.mode == "PRODUCTION" and all_frames_exist:  
             work_dir = self.context.extras.get("simind_work_dir", None)
 
             # only delete if it's a separate work directory (not your main output_dir)
@@ -269,17 +264,7 @@ class SpectReconstructionStage:
                 work_dir_abs = os.path.abspath(work_dir)
                 out_abs = os.path.abspath(self.output_dir)
 
-                # guardrails to avoid nuking outputs by mistake
                 if work_dir_abs != out_abs and os.path.exists(work_dir_abs):
                     shutil.rmtree(work_dir_abs, ignore_errors=True)
-
-        # Update context -> for now not needed downstream
-        #self.context.spect_sim_output_dir = self.output_dir
-        #self.context.recon_paths = recon_paths
-        #self.context.recon_atn_img = recon_atn_img
-        #self.context.recon_atn_path = recon_atn_path
-
-        #self.context.extras["recon_output_dir"] = self.output_dir
-        #self.context.extras["recon_header_dir_used"] = self.header_dir
 
         return self.context

@@ -33,28 +33,26 @@ TDT_TO_TOTSEG = {
         "submandibular_gland_right",
     ]),
 
-    # “body” lives in task="body" 
+    # “body” lives in task="body"
     "body": ("body", []),
 }
 
 class TotalSegmentationStage:
-    def __init__(self, config, context):
-        self.config = config
+    def __init__(self, context):
         self.context = context
+        
+        self.ct_input_path = context.ct_input_path  
 
-        self.ct_input_path = config["ct_input"]["path1"]
-        self.roi_subset = config["spect_preprocessing"]["roi_subset"]
+        self.roi_subset = context.config["spect_preprocessing"]["roi_subset"]
         self.ml = True
 
-        subdir_name = config["subdir_names"]["spect_preprocessing"]
-        output_root = config["output_folder"]["title"]
-        self.output_dir = os.path.join(output_root, subdir_name)
+        self.output_dir = context.subdir_paths["spect_preprocessing"] 
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.prefix = config["spect_preprocessing"]["name"]
+        self.prefix = context.config["spect_preprocessing"]["name"]
 
         self.ct_nii_path = None
-        self.body_ml_path = None 
+        self.body_ml_path = None
         self.head_glands_cavities_ml_path = None
         self.total_ml_path = None
 
@@ -78,6 +76,7 @@ class TotalSegmentationStage:
                     "Unsupported CT input. Provide a DICOM folder or a NIfTI file "
                     f"(.nii/.nii.gz). Got: {self.ct_input_path}"
                 )
+
     def _pre_totalsegmentation_checks(self):
         # -------- roi checks --------
         rois = self.roi_subset
@@ -121,7 +120,6 @@ class TotalSegmentationStage:
                         head_rois.append(x)
                         seen_head.add(x)
 
-
         plan = {
             "run_body": run_body,
             "run_total": bool(total_rois),
@@ -131,29 +129,29 @@ class TotalSegmentationStage:
             "tdt_roi_subset": rois,             # User names
         }
         return plan
-    
+
     def _files_exist(self):
         """all expected outputs"""
-        
+
         # check if expected outputs exist - all files as ML is True
         self.body_ml_path = os.path.join(self.output_dir, f"{self.prefix}_body_ml.nii.gz")
         self.head_glands_cavities_ml_path = os.path.join(self.output_dir, f"{self.prefix}_head_glands_cavities_ml.nii.gz")
-        self.total_ml_path  = os.path.join(self.output_dir, f"{self.prefix}_total_ml.nii.gz")
+        self.total_ml_path = os.path.join(self.output_dir, f"{self.prefix}_total_ml.nii.gz")
 
         body_ml_done = os.path.exists(self.body_ml_path)
         head_glands_cavities_ml_done = os.path.exists(self.head_glands_cavities_ml_path)
         total_ml_done = os.path.exists(self.total_ml_path)
-        
+
         return body_ml_done, head_glands_cavities_ml_done, total_ml_done
 
     def run(self):
         self._standardize_ct_to_nifti()
-        
+
         # --- validate user ROI list + compute which tasks to run ---
         plan = self._pre_totalsegmentation_checks()
-        
+
         body_ml_done, head_glands_cavities_ml_done, total_ml_done = self._files_exist()
-        
+
         if plan["run_body"] and not body_ml_done:
             print("Running TotalSegmentator for task : BODY...")
             totalsegmentator(
@@ -161,7 +159,7 @@ class TotalSegmentationStage:
                 self.body_ml_path,
                 ml=True,
                 task="body"
-                )
+            )
 
         # --- TOTAL (organs etc.) ---
         if plan["run_total"] and not total_ml_done:
@@ -183,7 +181,7 @@ class TotalSegmentationStage:
                 ml=True,
                 task="head_glands_cavities",
             )
-            
+
         # final existence checks (only what was requested)
         body_done, head_done, total_done = self._files_exist()
         if plan["run_body"] and not body_done:
@@ -201,5 +199,5 @@ class TotalSegmentationStage:
             self.head_glands_cavities_ml_path if plan["run_head_glands_cavities"] else None
         )
         self.context.totseg_plan = plan
-        
+
         return self.context

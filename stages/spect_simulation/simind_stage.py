@@ -5,45 +5,44 @@ import numpy as np
 
 
 class SimindSimulationStage:
-    def __init__(self, current_dir_path, config, context):
-        self.current_dir_path = current_dir_path
-        self.config = config
+    def __init__(self, context): 
         self.context = context
+        self.config = context.config
 
-        subdir_name = config["subdir_names"]["spect_simulation"]
-        output_root = config["output_folder"]["title"]
-        self.output_dir = os.path.join(output_root, subdir_name)
+        self.repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))  
+
+        self.output_dir = context.subdir_paths["spect_simulation"]  
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.work_dir = os.path.join(self.output_dir, "simind_work")
         os.makedirs(self.work_dir, exist_ok=True)
 
-        self.prefix = config["spect_simulation"]["name"]
-        
-        self.mode = str(config["mode"]["mode"]).strip().lower() # if production, will delete work files after run
+        self.prefix = context.config["spect_simulation"]["name"]
 
-        self.frame_start = config["pbpk"]["FrameStartTimes"]
-        self.frame_durations = config["pbpk"]["FrameDurations"] # seconds, len(frame_start)
-        self.collimator = config["spect_simulation"]["Collimator"]
-        self.isotope = config["spect_simulation"]["Isotope"]
-        self.num_projections = config["spect_simulation"]["NumProjections"]
-        self.detector_distance = config["spect_simulation"]["DetectorDistance"]
-        self.output_img_size = config["spect_simulation"]["OutputImgSize"]
-        self.output_pixel_width = config["spect_simulation"]["OutputPixelWidth"]
-        self.output_slice_width = config["spect_simulation"]["OutputSliceWidth"]
-        self.num_photons = config["spect_simulation"]["NumPhotons"]
-        self.simind_dir = config["spect_simulation"]["SIMINDDirectory"]
-        self.energy_window_width = config["spect_simulation"]["EnergyWindowWidth"]
-        self.detector_width = config["spect_simulation"]["DetectorWidth"] # cm
-        self.detector_length = config["spect_simulation"]["DetectorLength"] # cm (if value is 0 will use length of CT)
-        
-        num_cores = config["spect_simulation"]["NumCores"]
+        self.mode = self.context.mode 
+
+        self.frame_start = context.config["pbpk"]["FrameStartTimes"]
+        self.frame_durations = context.config["pbpk"]["FrameDurations"]  # seconds, len(frame_start)
+        self.collimator = context.config["spect_simulation"]["Collimator"]
+        self.isotope = context.config["spect_simulation"]["Isotope"]
+        self.num_projections = context.config["spect_simulation"]["NumProjections"]
+        self.detector_distance = context.config["spect_simulation"]["DetectorDistance"]
+        self.output_img_size = context.config["spect_simulation"]["OutputImgSize"]
+        self.output_pixel_width = context.config["spect_simulation"]["OutputPixelWidth"]
+        self.output_slice_width = context.config["spect_simulation"]["OutputSliceWidth"]
+        self.num_photons = context.config["spect_simulation"]["NumPhotons"]
+        self.simind_dir = context.config["spect_simulation"]["SIMINDDirectory"]
+        self.energy_window_width = context.config["spect_simulation"]["EnergyWindowWidth"]
+        self.detector_width = context.config["spect_simulation"]["DetectorWidth"]  # cm
+        self.detector_length = context.config["spect_simulation"]["DetectorLength"]  # cm (if value is 0 will use length of CT)
+
+        num_cores = context.config["spect_simulation"]["NumCores"]
         max_cores = os.cpu_count() or 1  # guard against None
         if isinstance(num_cores, bool) or not isinstance(num_cores, int) or not (1 <= num_cores <= max_cores):
             self.num_cores = max_cores
         else:
             self.num_cores = num_cores
-        
+
         self.simind_exe = os.path.join(self.simind_dir, "simind")
 
     def _set_simind_environment(self):
@@ -51,10 +50,10 @@ class SimindSimulationStage:
         os.environ["PATH"] = (self.simind_dir + ":" + os.environ.get("PATH", ""))
 
     def _copy_templates(self):
-        scatwin_file = os.path.join(self.current_dir_path, "bin", "scattwin.win")
+        scatwin_file = os.path.join(self.repo_root, "bin", "scattwin.win") 
         shutil.copyfile(scatwin_file, os.path.join(self.work_dir, f"{self.prefix}.win"))
 
-        smc_file = os.path.join(self.current_dir_path, "bin", "smc.smc")
+        smc_file = os.path.join(self.repo_root, "bin", "smc.smc")  
         shutil.copyfile(smc_file, os.path.join(self.work_dir, f"{self.prefix}.smc"))
 
     def _organ_totals_exist(self, organ_name):
@@ -78,8 +77,8 @@ class SimindSimulationStage:
     def _run_jaszczak_calibration(self):
         if self._calibration_exists():
             return
-
-        jaszak_file = os.path.join(self.current_dir_path, "bin", "jaszak.smc")
+        
+        jaszak_file = os.path.join(self.repo_root, "bin", "jaszak.smc")  
         shutil.copyfile(jaszak_file, os.path.join(self.output_dir, "jaszak.smc"))
 
         cmd = (
@@ -117,7 +116,7 @@ class SimindSimulationStage:
         xtot_w1 = 0
         xtot_w2 = 0
         xtot_w3 = 0
-        
+
         for j in range(self.num_cores):
             p1 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w1.a00")
             p2 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w2.a00")
@@ -126,20 +125,17 @@ class SimindSimulationStage:
             w1 = np.fromfile(p1, dtype=np.float32)
             w2 = np.fromfile(p2, dtype=np.float32)
             w3 = np.fromfile(p3, dtype=np.float32)
-            
-            
-            
+
             xtot_w1 += w1
             xtot_w2 += w2
             xtot_w3 += w3
-            
-            if self.mode == "production":
+
+            if self.mode == "PRODUCTION":  
                 for p in (p1, p2, p3):
                     try:
                         os.remove(p)  # .a00
                     except FileNotFoundError:
                         pass
-                
 
         xtot_w1 /= self.num_cores
         xtot_w2 /= self.num_cores
@@ -161,6 +157,7 @@ class SimindSimulationStage:
 
         for p in processes:
             p.wait()
+
     def _organ_headers_exist(self, organ_name):
         return os.path.exists(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_0_tot_w2.h00"))
 
@@ -200,11 +197,11 @@ class SimindSimulationStage:
 
         output_img_length = input_slice_width * arr_shape[0] / self.output_slice_width
 
-        detector_width_cm = self.detector_width # cm
+        detector_width_cm = self.detector_width  # cm
         if self.detector_length == 0:
-            detector_length_cm = arr_shape[0] * input_slice_width # cm
+            detector_length_cm = arr_shape[0] * input_slice_width  # cm
         else:
-            detector_length_cm = self.detector_length # cm
+            detector_length_cm = self.detector_length  # cm
 
         atn_name = os.path.basename(atn_av_path)
         atn_work_path = os.path.join(self.work_dir, atn_name)
@@ -238,8 +235,8 @@ class SimindSimulationStage:
                 f"/10:{detector_width_cm:.2f}"
                 f"/14:-7"
                 f"/15:-7"
-                f"/20:{-1*self.energy_window_width}" # if value of -20 is given, means ±10% around centre
-                f"/21:{-1*self.energy_window_width}" # dont know behavior if not given to both index 20 and 21 (gave to both)
+                f"/20:{-1*self.energy_window_width}"  
+                f"/21:{-1*self.energy_window_width}"
                 f"/28:{self.output_pixel_width}"
                 f"/29:{self.num_projections}"
                 f"/31:{input_pixel_width}"
@@ -260,6 +257,8 @@ class SimindSimulationStage:
         self._run_jaszczak_calibration()
 
         self.context.spect_sim_output_dir = self.output_dir
+
+        # (optional) use extras_set for logging; keeping minimal changes so leaving as-is
         self.context.extras["simind_output_dir"] = self.output_dir
         self.context.extras["simind_work_dir"] = self.work_dir
         self.context.extras["simind_num_cores"] = self.num_cores

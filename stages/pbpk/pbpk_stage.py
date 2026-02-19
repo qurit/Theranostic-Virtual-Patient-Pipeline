@@ -1,30 +1,25 @@
 import os
 import numpy as np
 import pycno
-import nibabel as nib
 import pydicom
 
 
 class PbpkStage:
-    def __init__(self, config, context):
-        self.config = config
+    def __init__(self, context):
         self.context = context
 
-        subdir_name = config["subdir_names"]["pbpk"]
-        output_root = config["output_folder"]["title"]
-        self.output_dir = os.path.join(output_root, subdir_name)
+        self.output_dir = context.subdir_paths["pbpk"]  
         os.makedirs(self.output_dir, exist_ok=True)
-        
-        self.ct_input_path = config["ct_input"]["path1"]
+
+        self.ct_input_path = context.ct_input_path
 
 
-        self.prefix = config["pbpk"]["name"]
-        self.vois_pbpk = config["pbpk"]["VOIs"]
-        self.frame_start = config["pbpk"]["FrameStartTimes"]
-        self.randomize_kidney_sg_para = config["pbpk"]["Randomization_Kidney_SG_Para"] # bool
+        self.prefix = context.config["pbpk"]["name"]
+        self.vois_pbpk = context.config["pbpk"]["VOIs"]
+        self.frame_start = context.config["pbpk"]["FrameStartTimes"]
+        self.randomize_kidney_sg_para = context.config["pbpk"]["Randomization_Kidney_SG_Para"]  # bool
         self.frame_stop = max(self.frame_start) if self.frame_start else 0
-        
-        
+
         self.roi_body_seg_arr = self.context.roi_body_seg_arr
         self.mask_roi_body = self.context.mask_roi_body
 
@@ -32,15 +27,15 @@ class PbpkStage:
     # helpers
     # -----------------------------
     def _remove_background(self, class_seg):
-        if "background" in class_seg:  
+        if "background" in class_seg:
             class_seg = dict(class_seg)
-            del class_seg["background"]  
+            del class_seg["background"]
         return class_seg
 
     def _voxel_volume_ml(self, arr_px_spacing_cm):
         arr_px_spacing_cm = np.asarray(arr_px_spacing_cm, dtype=float)
         return float(np.prod(arr_px_spacing_cm))  # cm^3 == mL
-    
+
     def _sample_lognormal_from_mean_sd(self, mean, sd):
         """
         Sample LogNormal such that the *resulting* distribution has the requested mean and sd.
@@ -135,17 +130,16 @@ class PbpkStage:
             raise ValueError("Frame start times contain non-finite values")
         if np.any(frame_start < 0):
             raise ValueError("Frame start times must be >= 0")
-        
-        
+
         parameters = {}
         # ---- Kidney and SG RDen and LamdaRel ----
-        if not isinstance(self.randomize_kidney_sg_para,bool):
+        if not isinstance(self.randomize_kidney_sg_para, bool):
             raise ValueError("Randomize Parameter must be only True or False in Config")
-        
+
         vois_set = {str(v).strip().lower() for v in (self.vois_pbpk or [])}
         has_kidney = ("kidney" in vois_set)
         has_sg = ("sg" in vois_set) or any("salivary" in v for v in vois_set)
-        
+
         if self.randomize_kidney_sg_para:
             if has_sg:
                 recep_dens_sg = self._sample_lognormal_from_mean_sd(60.0, 20.0)     # nmol/L
@@ -158,7 +152,7 @@ class PbpkStage:
                 lambda_rel_kidney = self._sample_lognormal_from_mean_sd(2.88e-4, 0.55e-4)
                 parameters["Rden_Kidney"] = recep_dens_kidney
                 parameters["lambdaRel_Kidney"] = lambda_rel_kidney
-                    
+
         # ---- Height and Weight ----
         self.height = None
         self.weight = None
@@ -175,7 +169,7 @@ class PbpkStage:
     def _run_psma_model(self):
         """Generate random physiological parameters and run PBPK model."""
         self.parameters = self._parameter_check()
-        
+
         # save provenance early
         self.context.pbpk_height_m = getattr(self, "height", None)
         self.context.pbpk_weight_kg = getattr(self, "weight", None)
@@ -205,11 +199,11 @@ class PbpkStage:
             "body": "Rest",
             "liver": "Liver",
             "prostate": "Prostate",
-            "heart": "Heart",              
-            "spleen": "Spleen",           
-            "salivary_glands": "SG",       
+            "heart": "Heart",
+            "spleen": "Spleen",
+            "salivary_glands": "SG",
         }
-        return roi_to_voi.get(roi_name, None)  
+        return roi_to_voi.get(roi_name, None)
 
     def _save_tac_files(self, roi_name, time, tac_voi, tac_interp):
         roi_tag = roi_name.lower()
@@ -244,13 +238,13 @@ class PbpkStage:
     ):
         voi_name = self._roi_to_voi(roi_name)
 
-        if voi_name is None:  
-            if "Rest" in self.vois_pbpk:  
-                voi_name = "Rest"  
-            else:  
-                raise ValueError(  
+        if voi_name is None:
+            if "Rest" in self.vois_pbpk:
+                voi_name = "Rest"
+            else:
+                raise ValueError(
                     f"No VOI mapping for ROI '{roi_name}', and no 'Rest' VOI exists in the PBPK model "
-                    f"(supported: {sorted(self.vois_pbpk)})." 
+                    f"(supported: {sorted(self.vois_pbpk)})."
                 )
 
         if voi_name not in self.vois_pbpk:
@@ -283,8 +277,8 @@ class PbpkStage:
         # Organ sum per frame [MBq]
         organ_sum = np.sum(activity_map_organ, axis=(1, 2, 3)) * voxel_vol_ml
 
-        if roi_name not in saved_tacs:  
-            saved_tacs[roi_name] = self._save_tac_files(roi_name, time, tac_voi, tac_interp)  
+        if roi_name not in saved_tacs:
+            saved_tacs[roi_name] = self._save_tac_files(roi_name, time, tac_voi, tac_interp)
 
         return activity_map_organ, organ_sum, organ_map_path
 
@@ -292,10 +286,10 @@ class PbpkStage:
     # main
     # -----------------------------
     def run(self):
-        for k in ("roi_body_seg_arr", "mask_roi_body", "class_seg", "arr_px_spacing_cm"):  
-            if getattr(self.context, k, None) is None:  
-                raise AttributeError(f"Context missing required field: {k}")  
-            
+        for k in ("roi_body_seg_arr", "mask_roi_body", "class_seg", "arr_px_spacing_cm"):
+            if getattr(self.context, k, None) is None:
+                raise AttributeError(f"Context missing required field: {k}")
+
         class_seg = self._remove_background(self.context.class_seg)
         voxel_vol_ml = self._voxel_volume_ml(self.context.arr_px_spacing_cm)
 
@@ -341,6 +335,5 @@ class PbpkStage:
         self.context.activity_map_sum = activity_map_sum
         self.context.activity_organ_sum = activity_organ_sum
         self.context.activity_map_paths_by_organ = organ_paths
-        
 
         return self.context

@@ -122,8 +122,17 @@ class SimindSimulationStage:
         - SMC_DIR: where SIMIND expects its `smc_dir` resources
         - PATH: ensures the SIMIND executable directory is discoverable
         """  
-        os.environ["SMC_DIR"] = os.path.join(self.simind_dir, "smc_dir")  
-        os.environ["PATH"] = (self.simind_dir + os.pathsep + os.environ.get("PATH", "")) 
+        smc_dir = os.path.join(self.simind_dir, "smc_dir")
+
+        if not os.path.isdir(smc_dir):
+            raise FileNotFoundError(f"SMC_DIR folder not found: {smc_dir}")
+
+        # SIMIND expects SMC_DIR to end with / (or \ on Windows)
+        if not smc_dir.endswith(os.sep):
+            smc_dir += os.sep
+
+        os.environ["SMC_DIR"] = smc_dir
+        os.environ["PATH"] = self.simind_dir + os.pathsep + os.environ.get("PATH", "") 
 
     def _copy_templates(self) -> None:  
         """

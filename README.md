@@ -2,6 +2,34 @@
 
 > This pipeline creates patient-specific **theranostic digital twins** by combining CT-based anatomy/segmentation with PBPK kinetics and physics-based SPECT simulation/reconstruction, supporting research in diagnosis and therapy planning.
 
+## Quick Start (minimal run)
+1) Create + activate environment
+```bash
+conda env create -f environment.yml
+conda activate TDT_env
+```
+2) Install PyCNO (PBPK dependency)
+```bash
+cd ~
+git clone https://github.com/qurit/PyCNO.git
+cd PyCNO
+pip install -e .
+```
+3) Ensure SIMIND is installed and available
+```bash
+which simind
+echo $SMC_DIR
+```
+4) Prepare inputs
+```bash
+mkdir -p inputs/ct_input
+cp inputs/config_default.json inputs/config.json
+```
+5) Run
+```bash
+python -u main.py --config_file inputs/config.json --input_ct_dir inputs/ct_input
+```
+Outputs are written into a per-CT folder (see Outputs).
 ---
 
 ## Overview
@@ -12,21 +40,26 @@
 
 The **Theranostic Digital Twins (TDT) Pipeline** is a quantitative software framework that uses real patient CT data to build end-to-end digital twins for theranostics research. It integrates:
 
-- **Patient-specific anatomy** from clinical CT
+- **Patient-specific anatomy** from clinical CT scans
 - **Organ/tumor segmentation** (e.g., TotalSegmentator-based workflows)
 - **Pharmacokinetic (PBPK) modeling** to generate time-activity behavior
 - **Physics-based SPECT simulation + reconstruction** to produce quantitative images
 
 Because uptake and dose can vary substantially between patients, TDTs support personalized evaluation of therapy strategies by enabling controlled, repeatable experiments across anatomy, kinetics, and imaging physics. A key objective is demonstrating agreement with patient measurements to support reliability and validation; longer-term, this work supports **Virtual Theranostic Trials (VTTs)** and patient-specific dosimetry prediction.
 
+
 ---
 
 ## Installation 
 
-### Prerequisites
+### Requirments 
 - Conda (Miniconda/Anaconda)
 - A working C/C++ build toolchain for compiling certain Python dependencies (varies by OS)
+- **PyCNO** installed separately (see Step 2)
 - **SIMIND** installed separately (see Step 3)
+#### Recommended
+- Linux for full pipeline runs (SIMIND workflow tends to be simplest on Linux HPC/servers)
+- Enough disk for intermediate SIMIND outputs (can be large depending on photons / frames / ROIs)
 
 ### 1) Create the conda environment (from `environment.yml`)
 > Note: PyCNO is installed separately (Step 2). If `environment.yml` contains a `pycno` entry, remove it before creating the environment.

@@ -114,7 +114,7 @@ Then edit `inputs/config.json`.
 - `spect_simulation.NumCores` — number of CPU cores for parallel SIMIND simulations (`0` = use all available cores).
 
 ### Mode behavior
-- `mode.mode` = `"DEBUG"` or `"PRODUCTION"`.
+- `mode` = `"DEBUG"` or `"PRODUCTION"`.
   - `DEBUG`: best for development/iteration.
   - `PRODUCTION`: intended for full runs; can skip re-running cases when final outputs already exist.
 
@@ -130,14 +130,39 @@ You can put **any mix** of the following inside `inputs/ct_input/`:
 - One or more **DICOM folders** (each folder containing a CT DICOM series)
 - Multiple CTs (multiple NIfTIs and/or multiple DICOM folders)
 
-3) **Run**  
+3) **Command-line Interface**  
+Required arguments
+- --config_file : Path to your JSON config file.
+- --input_ct_dir : Directory containing CT inputs (each item can be a DICOM folder or a .nii/.nii.gz).
+Optional arguments
+- --mode {DEBUG,PRODUCTION} : Controls verbosity and stage behavior (default: PRODUCTION).
+- --logging_on / --no-logging_on : Enable/disable per-CT log file writing (default: enabled).
+- --save_ct_scan / --no-save_ct_scan : Copy the CT input into the CT output folder for provenance/debugging (default: disabled).
+- --save_config / --no-save_config : Copy the config JSON into each CT output folder (default: disabled).
 
-To run:
+4) **Run**  
+
+**Basic Run (recommended)**
 ```bash
-python main.py 
+python -u main.py \
+  --config_file inputs/config.json \
+  --input_ct_dir inputs/ct_input \
 ```
-TO DO: make CLI posssible in main
----
+
+**Run + All Options Set**
+```bash
+python -u main.py \
+  --config_file inputs/config.json \
+  --input_ct_dir inputs/ct_input \
+  --mode PRODUCTION \
+  --logging_on \
+  --save_ct_scan \
+  --save_config
+```
+
+## Contact
+Maintainer: Peter Yazdi
+Email: pyazdi@bccrc.ca
 
 
 

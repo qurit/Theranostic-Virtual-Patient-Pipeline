@@ -10,9 +10,9 @@ Notes:
 - The pipeline writes outputs into an output folder derived from the config and CT index.
 
 For any questions or issues, please contact: pyazdi@bccrc.ca
-"""  
+"""
 
-from __future__ import annotations  
+from __future__ import annotations
 
 # -----------------------------
 # Standard library imports
@@ -25,7 +25,7 @@ import time
 import shutil
 import argparse
 import copy
-from typing import Any, Dict, Literal, Optional 
+from typing import Any, Dict, Literal, Optional
 
 # -----------------------------
 # Local imports
@@ -41,7 +41,8 @@ from stages.spect_simulation.simind_stage import SimindSimulationStage
 from stages.spect_simulation.reconstruction_stage import SpectReconstructionStage
 
 
-CTInputType = Literal["nii", "dicom"] 
+CTInputType = Literal["nii", "dicom"]
+
 
 class TdtPipeline:
     """
@@ -59,6 +60,8 @@ class TdtPipeline:
         If True, writes a per-CT log file into the CT output folder.
     save_ct_scan : bool, default=False
         If True, copies the CT input into the output folder for provenance.
+    save_config : bool, default=False
+        If True, saves a copy of the config JSON into the output folder. 
     mode : {"DEBUG", "PRODUCTION"}, default="PRODUCTION"
         Affects logging verbosity.
 
@@ -74,25 +77,27 @@ class TdtPipeline:
         Runtime context object passed through pipeline stages.
     logger : logging.Logger
         Per-CT logger, optionally writing to a file handler.
-    """  
+    """
 
-    def __init__(  
+    def __init__(
         self,
-        config_path: str,  
-        ct_input: str, 
-        ct_indx: int, 
-        logging_on: bool = True,  
-        save_ct_scan: bool = False, 
-        mode: Literal["DEBUG", "PRODUCTION"] = "PRODUCTION",  
-    ) -> None:  
-        self.config_path: str = config_path  
-        self.ct_input: str = ct_input  
-        self.ct_indx: int = ct_indx  
-        self.current_dir_path: str = os.path.abspath(os.path.dirname(__file__))  
+        config_path: str,
+        ct_input: str,
+        ct_indx: int,
+        logging_on: bool = True,
+        save_ct_scan: bool = False,
+        save_config: bool = False,  
+        mode: Literal["DEBUG", "PRODUCTION"] = "PRODUCTION",
+    ) -> None:
+        self.config_path: str = config_path
+        self.ct_input: str = ct_input
+        self.ct_indx: int = ct_indx
+        self.current_dir_path: str = os.path.abspath(os.path.dirname(__file__))
 
         self.logging_on: bool = logging_on  # if True, enables file logging in the output folder
         self.save_ct_scan: bool = save_ct_scan  # if True, saves a copy of the CT input in the output folder for provenance
-        self.mode: Literal["DEBUG", "PRODUCTION"] = mode  
+        self.save_config: bool = save_config  # if True, saves config json into the CT output folder  
+        self.mode: Literal["DEBUG", "PRODUCTION"] = mode
 
         self.config: Dict[str, Any] = {}  # will be populated in _config_setup()
         self.output_folder_path: str = ""  # will be set in _config_setup()
@@ -100,7 +105,7 @@ class TdtPipeline:
 
         self._config_setup(config_path)
 
-        self.logger: logging.Logger = logging.getLogger(f"TDT_CONFIG_LOGGER_CT_{self.ct_indx}")  
+        self.logger: logging.Logger = logging.getLogger(f"TDT_CONFIG_LOGGER_CT_{self.ct_indx}")
         self.logger.setLevel(logging.DEBUG if self.mode == "DEBUG" else logging.INFO)
         self.logger.propagate = False
 
@@ -109,12 +114,12 @@ class TdtPipeline:
         else:
             self.logger.disabled = True
 
-        self.context: Context  
+        self.context: Context
         self._context_setup()
         if not self.logging_on:
             self.context._log_enabled = False
 
-    def _save_ct_input_copy(self) -> None:  
+    def _save_ct_input_copy(self) -> None:
         """
         Copy the CT input into the output folder under `ct_input_copy/`.
 
@@ -123,7 +128,7 @@ class TdtPipeline:
         - If `self.ct_input` is a file: copies the file into `ct_input_copy/`
         - If `self.ct_input` is a directory: copies the entire directory into
           `ct_input_copy/<dirname>/`
-        """  
+        """
         dst_root = os.path.join(self.output_folder_path, "ct_input_copy")
         os.makedirs(dst_root, exist_ok=True)
 
@@ -134,7 +139,17 @@ class TdtPipeline:
             if not os.path.exists(dst):
                 shutil.copytree(self.ct_input, dst)
 
-    def _log_setup(self) -> logging.Logger: 
+    def _save_config_copy(self, config_path: str) -> None:  
+        """
+        Save a copy of the config JSON into the output folder.
+
+        Writes:
+            <output_folder_path>/config.json
+        """
+        dst = os.path.join(self.output_folder_path, "config.json")
+        shutil.copy2(config_path, dst)
+
+    def _log_setup(self) -> logging.Logger:
         """
         Configure a per-CT log file handler writing to:
             <output_folder_path>/logging_file_CT_<ct_indx>.log
@@ -143,7 +158,7 @@ class TdtPipeline:
         -------
         logging.Logger
             The configured per-CT logger.
-        """  
+        """
         log_path = os.path.join(self.output_folder_path, f"logging_file_CT_{self.ct_indx}.log")
         logger = self.logger
 
@@ -165,7 +180,7 @@ class TdtPipeline:
         logger.info("Output folder: %s", self.output_folder_path)
         return logger
 
-    def _config_setup(self, config_path: str) -> None: 
+    def _config_setup(self, config_path: str) -> None:
         """
         Load config from disk and prepare output folder + subdirectories.
 
@@ -180,7 +195,7 @@ class TdtPipeline:
             If the config file does not exist or the CT input path is invalid.
         ValueError
             If a file input is provided but is not a supported NIfTI extension.
-        """  
+        """
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
@@ -206,11 +221,15 @@ class TdtPipeline:
         if self.save_ct_scan:
             self._save_ct_input_copy()
 
+        # Optionally save a copy of the config
+        if self.save_config:  
+            self._save_config_copy(config_path)  
+
         # Create subdirs
         for _, name in self.config["subdir_names"].items():
             os.makedirs(os.path.join(self.output_folder_path, name), exist_ok=True)
 
-    def _context_setup(self) -> None:  
+    def _context_setup(self) -> None:
         """
         Create and populate the Context object.
 
@@ -218,7 +237,7 @@ class TdtPipeline:
         - A deep-copied snapshot of relevant config sections
         - Runtime metadata (mode, CT path/type/index, output folder)
         - Computed subdir paths used across stages
-        """  
+        """
         context = Context(logger=self.logger)
         self.context = context
 
@@ -245,10 +264,10 @@ class TdtPipeline:
 
         self.logger.debug("Context initialized for CT_%s", self.ct_indx)
 
-    def run(self) -> Context:  
+    def run(self) -> Context:
         """
         Execute the pipeline stages sequentially for this CT.
-        
+
         Stages:
         1. TotalSegmentator
         2. Unification of TS outputs to TDT ROIs
@@ -256,7 +275,7 @@ class TdtPipeline:
         4. PBPK
         5. SIMIND Simulation
         6. SPECT Reconstruction
-        
+
         Returns
         -------
         Context
@@ -265,7 +284,7 @@ class TdtPipeline:
         Notes
         -----
         Each stage is expected to implement `.run()` and return an updated Context.
-        """  
+        """
         logger = self.logger
         t_pipeline = time.perf_counter()
 
@@ -354,7 +373,7 @@ class TdtPipeline:
         return context
 
 
-def build_arg_parser() -> argparse.ArgumentParser: 
+def build_arg_parser() -> argparse.ArgumentParser:
     """
     Build the CLI argument parser.
 
@@ -362,7 +381,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     -------
     argparse.ArgumentParser
         Configured argument parser for the pipeline CLI.
-    """  
+    """
     parser = argparse.ArgumentParser(
         description="Theranostic Digital Twin (TDT) Pipeline Runner"
     )
@@ -384,6 +403,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=False,
         help="Copy CT input into output folder. Use --save_ct_scan / --no-save_ct_scan. Default: disabled",
     )
+    parser.add_argument(  
+        "--save_config",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Copy the config JSON into each CT output folder. Use --save_config / --no-save_config. Default: disabled",
+    )  
 
     parser.add_argument(
         "--mode",
@@ -394,7 +419,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:  
+def main() -> int:
     """
     CLI entrypoint.
 
@@ -402,7 +427,7 @@ def main() -> int:
     -------
     int
         Process exit code (0 = success).
-    """  
+    """
     parser = build_arg_parser()
     args = parser.parse_args()
 
@@ -426,6 +451,7 @@ def main() -> int:
                 ct_indx=idx,
                 logging_on=args.logging_on,
                 save_ct_scan=args.save_ct_scan,
+                save_config=args.save_config, 
                 mode=args.mode,
             )
             pipeline.run()
@@ -437,4 +463,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())  
+    raise SystemExit(main())

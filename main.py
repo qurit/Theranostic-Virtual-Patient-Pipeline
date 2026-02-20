@@ -1,4 +1,22 @@
-#imports
+"""
+Theranostic Digital Twin (TDT) Pipeline Runner.
+
+This module provides:
+- `TdtPipeline`: an orchestrator that runs all pipeline stages for a single CT input.
+- A CLI entrypoint that iterates through a directory of CT inputs and runs the pipeline.
+
+Notes:
+- A CT input may be either a NIfTI file (.nii / .nii.gz) or a DICOM directory.
+- The pipeline writes outputs into an output folder derived from the config and CT index.
+
+For any questions or issues, please contact: pyazdi@bccrc.ca
+"""  
+
+from __future__ import annotations  
+
+# -----------------------------
+# Standard library imports
+# -----------------------------
 import os
 import json
 from json_minify import json_minify
@@ -6,9 +24,12 @@ import logging
 import time
 import shutil
 import argparse
-from distutils.util import strtobool  
 import copy
+from typing import Any, Dict, Literal, Optional 
 
+# -----------------------------
+# Local imports
+# -----------------------------
 from context import Context
 
 from stages.spect_pre_process.segmentation_stage import TotalSegmentationStage
@@ -20,32 +41,66 @@ from stages.spect_simulation.simind_stage import SimindSimulationStage
 from stages.spect_simulation.reconstruction_stage import SpectReconstructionStage
 
 
+CTInputType = Literal["nii", "dicom"] 
+
 class TdtPipeline:
     """
     Orchestrates the full TDT pipeline for a single CT input.
 
-    Args:
-        config_path (str): Path to the JSON config file (comments allowed via json_minify).
-        ct_input (str): Path to a CT input (either a .nii/.nii.gz file OR a DICOM directory).
-        ct_indx (int): Index used for naming (e.g., output folder suffix "_CT_{ct_indx}").
-        logging_on (bool): If True, writes a per-CT log file into the CT output folder.
-        save_ct_scan (bool): If True, copies the CT input into the output folder for provenance.
-        mode (str): "DEBUG" or "PRODUCTION" (affects logging verbosity).
-    """
+    Parameters
+    ----------
+    config_path : str
+        Path to the JSON config file (comments allowed via `json_minify`).
+    ct_input : str
+        Path to a CT input (either a .nii/.nii.gz file OR a DICOM directory).
+    ct_indx : int
+        Index used for naming (e.g., output folder suffix "_CT_{ct_indx}").
+    logging_on : bool, default=True
+        If True, writes a per-CT log file into the CT output folder.
+    save_ct_scan : bool, default=False
+        If True, copies the CT input into the output folder for provenance.
+    mode : {"DEBUG", "PRODUCTION"}, default="PRODUCTION"
+        Affects logging verbosity.
 
-    def __init__(self, config_path, ct_input, ct_indx, logging_on=True, save_ct_scan=False, mode='PRODUCTION'):
-        self.config_path = config_path
-        self.ct_input = ct_input
-        self.ct_indx = ct_indx
-        self.current_dir_path = os.path.abspath(os.path.dirname(__file__))
+    Attributes
+    ----------
+    config : dict[str, Any]
+        Parsed configuration loaded from `config_path`.
+    output_folder_path : str
+        Absolute path to the CT-specific output folder.
+    ct_input_type : {"nii", "dicom"}
+        Determined input type for `ct_input`.
+    context : Context
+        Runtime context object passed through pipeline stages.
+    logger : logging.Logger
+        Per-CT logger, optionally writing to a file handler.
+    """  
 
-        self.logging_on = logging_on
-        self.save_ct_scan = save_ct_scan
-        self.mode = mode
+    def __init__(  
+        self,
+        config_path: str,  
+        ct_input: str, 
+        ct_indx: int, 
+        logging_on: bool = True,  
+        save_ct_scan: bool = False, 
+        mode: Literal["DEBUG", "PRODUCTION"] = "PRODUCTION",  
+    ) -> None:  
+        self.config_path: str = config_path  
+        self.ct_input: str = ct_input  
+        self.ct_indx: int = ct_indx  
+        self.current_dir_path: str = os.path.abspath(os.path.dirname(__file__))  
+
+        self.logging_on: bool = logging_on  # if True, enables file logging in the output folder
+        self.save_ct_scan: bool = save_ct_scan  # if True, saves a copy of the CT input in the output folder for provenance
+        self.mode: Literal["DEBUG", "PRODUCTION"] = mode  
+
+        self.config: Dict[str, Any] = {}  # will be populated in _config_setup()
+        self.output_folder_path: str = ""  # will be set in _config_setup()
+        self.ct_input_type: CTInputType = "dicom"  # default, will be set properly in _config_setup() after validation
 
         self._config_setup(config_path)
 
-        self.logger = logging.getLogger(f"TDT_CONFIG_LOGGER_CT_{self.ct_indx}")
+        self.logger: logging.Logger = logging.getLogger(f"TDT_CONFIG_LOGGER_CT_{self.ct_indx}")  
         self.logger.setLevel(logging.DEBUG if self.mode == "DEBUG" else logging.INFO)
         self.logger.propagate = False
 
@@ -54,33 +109,41 @@ class TdtPipeline:
         else:
             self.logger.disabled = True
 
+        self.context: Context  
         self._context_setup()
         if not self.logging_on:
             self.context._log_enabled = False
 
-    def _save_ct_input_copy(self):
+    def _save_ct_input_copy(self) -> None:  
         """
         Copy the CT input into the output folder under `ct_input_copy/`.
 
-        Accepts:
-            - If self.ct_input is a file: copies file into ct_input_copy/
-            - If self.ct_input is a directory: copies entire directory into ct_input_copy/<dirname>/
-        """
+        Behavior
+        --------
+        - If `self.ct_input` is a file: copies the file into `ct_input_copy/`
+        - If `self.ct_input` is a directory: copies the entire directory into
+          `ct_input_copy/<dirname>/`
+        """  
         dst_root = os.path.join(self.output_folder_path, "ct_input_copy")
         os.makedirs(dst_root, exist_ok=True)
 
-        if os.path.isfile(self.ct_input): # nii file
+        if os.path.isfile(self.ct_input):  # nii file
             shutil.copy2(self.ct_input, os.path.join(dst_root, os.path.basename(self.ct_input)))
-        else: # dicom dir
+        else:  # dicom dir
             dst = os.path.join(dst_root, os.path.basename(os.path.normpath(self.ct_input)))
             if not os.path.exists(dst):
                 shutil.copytree(self.ct_input, dst)
 
-    def _log_setup(self):
+    def _log_setup(self) -> logging.Logger: 
         """
         Configure a per-CT log file handler writing to:
             <output_folder_path>/logging_file_CT_<ct_indx>.log
-        """
+
+        Returns
+        -------
+        logging.Logger
+            The configured per-CT logger.
+        """  
         log_path = os.path.join(self.output_folder_path, f"logging_file_CT_{self.ct_indx}.log")
         logger = self.logger
 
@@ -99,16 +162,25 @@ class TdtPipeline:
             logger.addHandler(fh)
 
         logger.info("----Log started----")
-        logger.info("Output folder: %s", self.output_folder_path)  
+        logger.info("Output folder: %s", self.output_folder_path)
         return logger
 
-    def _config_setup(self, config_path):
+    def _config_setup(self, config_path: str) -> None: 
         """
         Load config from disk and prepare output folder + subdirectories.
 
-        Args:
-            config_path (str): Path to JSON config. (May include // comments, stripped via json_minify.)
-        """
+        Parameters
+        ----------
+        config_path : str
+            Path to JSON config. (May include // comments, stripped via json_minify.)
+
+        Raises
+        ------
+        FileNotFoundError
+            If the config file does not exist or the CT input path is invalid.
+        ValueError
+            If a file input is provided but is not a supported NIfTI extension.
+        """  
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
@@ -138,15 +210,15 @@ class TdtPipeline:
         for _, name in self.config["subdir_names"].items():
             os.makedirs(os.path.join(self.output_folder_path, name), exist_ok=True)
 
-    def _context_setup(self):
+    def _context_setup(self) -> None:  
         """
         Create and populate the Context object.
 
-        This stores:
-          - A snapshot of the user config (deep-copied)
-          - Runtime metadata (mode, ct_input_path, ct_input_type, ct_indx, output_folder_path)
-          - Computed subdir paths
-        """
+        The Context stores:
+        - A deep-copied snapshot of relevant config sections
+        - Runtime metadata (mode, CT path/type/index, output folder)
+        - Computed subdir paths used across stages
+        """  
         context = Context(logger=self.logger)
         self.context = context
 
@@ -171,15 +243,29 @@ class TdtPipeline:
             for k, name in context.subdir_names.items()
         }
 
-        self.logger.debug("Context initialized for CT_%s", self.ct_indx)  
+        self.logger.debug("Context initialized for CT_%s", self.ct_indx)
 
-    def run(self):
+    def run(self) -> Context:  
         """
         Execute the pipeline stages sequentially for this CT.
+        
+        Stages:
+        1. TotalSegmentator
+        2. Unification of TS outputs to TDT ROIs
+        3. Preprocess for SIMIND
+        4. PBPK
+        5. SIMIND Simulation
+        6. SPECT Reconstruction
+        
+        Returns
+        -------
+        Context
+            The updated context after all stages complete.
 
-        Returns:
-            Context: The updated context after all stages complete.
-        """
+        Notes
+        -----
+        Each stage is expected to implement `.run()` and return an updated Context.
+        """  
         logger = self.logger
         t_pipeline = time.perf_counter()
 
@@ -268,58 +354,55 @@ class TdtPipeline:
         return context
 
 
-def build_arg_parser():
+def build_arg_parser() -> argparse.ArgumentParser: 
     """
     Build the CLI argument parser.
 
-    Returns:
-        argparse.ArgumentParser: Configured parser for main.py
-    """
+    Returns
+    -------
+    argparse.ArgumentParser
+        Configured argument parser for the pipeline CLI.
+    """  
     parser = argparse.ArgumentParser(
         description="Theranostic Digital Twin (TDT) Pipeline Runner"
     )
 
-    # REQUIRED
-    parser.add_argument(
-        "--config_file",
-        required=True,
-        type=str,
-        help="Path to the pipeline config JSON, typically /inputs/config.json",
-    )
-    parser.add_argument(
-        "--input_ct_dir",
-        required=True,
-        type=str,
-        help="Path to CT inputs directory, typically /inputs/ct_inputs/",
-    )
+    # Required arguments
+    parser.add_argument("--config_file", required=True, type=str)
+    parser.add_argument("--input_ct_dir", required=True, type=str)
 
-    # Extra
+    # Optional flags
     parser.add_argument(
         "--logging_on",
+        action=argparse.BooleanOptionalAction,
         default=True,
-        type=lambda x: bool(strtobool(x)),
-        help="Enable file logging (true/false). Default: true",
+        help="Enable file logging. Use --logging_on / --no-logging_on. Default: enabled",
     )
     parser.add_argument(
         "--save_ct_scan",
+        action=argparse.BooleanOptionalAction,
         default=False,
-        type=lambda x: bool(strtobool(x)),
-        help="Copy CT input into output folder for provenance (true/false). Default: false",
+        help="Copy CT input into output folder. Use --save_ct_scan / --no-save_ct_scan. Default: disabled",
     )
+
     parser.add_argument(
         "--mode",
-        default='PRODUCTION',
+        default="PRODUCTION",
         choices=["DEBUG", "PRODUCTION"],
-        help=(
-            "DEBUG is better for single runs while PRODUCTION saves space for "
-            "multi-patient runs. Default PRODUCTION"
-        ),
     )
 
     return parser
 
 
-if __name__ == "__main__":
+def main() -> int:  
+    """
+    CLI entrypoint.
+
+    Returns
+    -------
+    int
+        Process exit code (0 = success).
+    """  
     parser = build_arg_parser()
     args = parser.parse_args()
 
@@ -328,10 +411,10 @@ if __name__ == "__main__":
     if not os.path.isdir(ct_inputs_dir):
         raise NotADirectoryError(f"input_ct_dir must be a directory: {ct_inputs_dir}")
 
-    # so indx isnt thrown off by hidden files; also sort for consistency
+    # Filter hidden files/directories and keep deterministic ordering for repeatability
     items = [n for n in sorted(os.listdir(ct_inputs_dir)) if not n.startswith(".")]
 
-    print(f"Discovered {len(items)} CT item(s) in: {ct_inputs_dir}")  
+    print(f"Discovered {len(items)} CT item(s) in: {ct_inputs_dir}")
 
     for idx, name in enumerate(items):
         ct_path = os.path.join(ct_inputs_dir, name)
@@ -347,4 +430,11 @@ if __name__ == "__main__":
             )
             pipeline.run()
         except Exception as e:
+            # Keep console-friendly failure reporting per CT input
             print(f"[ERROR] CT index {idx} failed for input: {ct_path}\n{e}")
+
+    return 0  # 0 indicates successful completion of the CLI process
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())  

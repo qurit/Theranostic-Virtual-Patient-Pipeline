@@ -1,3 +1,32 @@
+"""  
+SPECT reconstruction stage for the Theranostic Digital Twin (TDT) pipeline.  
+
+This stage reconstructs quantitative SPECT images from SIMIND-generated windowed projection totals  
+using PyTomography (OSEM + TEW scatter).  
+
+Inputs (from previous stages)  
+------------------------------ 
+- SIMIND per-frame window totals: <prefix>_<t>min_tot_w{1,2,3}.a00  
+- SIMIND headers produced during simulation (work dir): .h00, .cor (optional), .hct  
+- Calibration file produced by SIMIND: calib.res  
+
+Outputs  
+-------  
+- Reconstructed images: <prefix>_<t>min.nii  
+- Attenuation map image in recon grid: <prefix>_atn_img.nii  
+
+Notes  
+-----  
+- `context.extras` is expected to store SIMIND work/output directories. 
+- This stage assumes the SIMIND header naming convention produced by `SimindSimulationStage`.  
+
+Maintainer / contact: pyazdi@bccrc.ca  
+"""  
+
+from __future__ import annotations  
+
+from typing import Any, Optional, Sequence, Tuple  
+
 import os
 import numpy as np
 import SimpleITK as sitk
@@ -13,63 +42,80 @@ from pytomography.projectors.SPECT import SPECTSystemMatrix
 from pytomography.transforms.SPECT import SPECTAttenuationTransform, SPECTPSFTransform
 
 
-
-
 class SpectReconstructionStage:
-    def __init__(self, config, context):
-        self.config = config
+    """Reconstruct SPECT images from SIMIND totals using PyTomography. 
+
+    Parameters  
+    ----------  
+    context : Any  
+        Pipeline context. Must provide PBPK timing config and SIMIND outputs/headers.  
+    """  
+
+    def __init__(self, context: Any) -> None:  
         self.context = context
 
-        # output_dir: where frame totals + calib.res are 
+        # output_dir: where frame totals + calib.res are
         self.output_dir = getattr(context, "spect_sim_output_dir", None)
         if self.output_dir is None:
             self.output_dir = context.extras.get("simind_output_dir", None)
 
         # fallback (if user runs recon standalone)
         if self.output_dir is None:
-            subdir_name = config["subdir_names"]["spect_simulation"]
-            output_root = config["output_folder"]["title"]
-            self.output_dir = os.path.join(output_root, subdir_name)
+            self.output_dir = context.subdir_paths["spect_simulation"]
 
         os.makedirs(self.output_dir, exist_ok=True)
-        
-        self.mode = str(config["mode"]["mode"]).strip().lower()
+
+        self.mode = context.mode
 
         # header_dir: where SIMIND wrote .h00/.cor/.hct (work_dir)
         self.header_dir = context.extras.get("simind_work_dir", self.output_dir)
-        
 
-        self.prefix = config["spect_simulation"]["name"]
+        self.prefix = context.config["spect_simulation"]["name"]
 
-        self.frame_start = config["pbpk"]["FrameStartTimes"]
-        self.frame_durations = config["pbpk"]["FrameDurations"] # in seconds, len(frame_start)
+        self.frame_start: Sequence[float] = context.config["pbpk"]["FrameStartTimes"]  
+        self.frame_durations: Sequence[float] = context.config["pbpk"]["FrameDurations"]  #in seconds, len(frame_start)
 
-        self.iterations = config["spect_simulation"]["Iterations"]
-        self.subsets = config["spect_simulation"]["Subsets"]
-        self.output_pixel_width = config["spect_simulation"]["OutputPixelWidth"]
-        self.output_slice_width = config["spect_simulation"]["OutputSliceWidth"]
-        self.detector_distance = config["spect_simulation"]["DetectorDistance"]
+        self.iterations: int = context.config["spect_simulation"]["Iterations"]  
+        self.subsets: int = context.config["spect_simulation"]["Subsets"] 
+        self.output_pixel_width: float = context.config["spect_simulation"]["OutputPixelWidth"]  
+        self.output_slice_width: float = context.config["spect_simulation"]["OutputSliceWidth"]  
+        self.detector_distance: float = context.config["spect_simulation"]["DetectorDistance"] 
 
-        self.output_tuple = (self.output_pixel_width, self.output_pixel_width, self.output_slice_width)
-        
-        self.recon_algorithm = config["spect_simulation"]["ReconstructionAlgorithm"]
+        # (x, y, z) spacing for SimpleITK images created from arrays.
+        self.output_tuple: Tuple[float, float, float] = (  
+            self.output_pixel_width,
+            self.output_pixel_width,
+            self.output_slice_width,
+        )
+
+        self.recon_algorithm: str = context.config["spect_simulation"]["ReconstructionAlgorithm"] 
 
     # -----------------------------
     # helpers
     # -----------------------------
-    def _get_sensitivity_from_calibration_file(self, calibration_file):
-        sensitvity_line = 70
+    def _get_sensitivity_from_calibration_file(self, calibration_file: str) -> float:  
+        """Read sensitivity (counts/s/MBq) from SIMIND `calib.res`. 
+
+        Notes  
+        -----  
+        SIMIND writes sensitivity on a fixed line index in `calib.res`.  
+        """  
+        sensitvity_line = 70  # original index (0-based)
         with open(calibration_file, "r") as file:
             lines = file.readlines()
             sensitivity_line = lines[sensitvity_line].strip()
             sensitivity = float(sensitivity_line.split(":")[-1].strip().split()[0])
         return sensitivity
 
-    def _get_object_and_proj_metadata(self, photopeak_path, cor_path=None):
+    def _get_object_and_proj_metadata(self, photopeak_path: str, cor_path: Optional[str] = None):  
+        """Return (object_meta, proj_meta) from SIMIND headers."""  
         object_meta, proj_meta = simind.get_metadata(photopeak_path, cor_path)
         return object_meta, proj_meta
 
-    def _get_metadata_from_header(self, photopeak_path, lower_path, upper_path):
+    def _get_metadata_from_header(
+        self, photopeak_path: str, lower_path: str, upper_path: str  
+    ) -> Tuple[int, int, int, float, float, float]: 
+        """Parse SIMIND header information required to reshape projections."""  
         with open(photopeak_path, "r") as f:
             headerdata = np.array(f.readlines())
 
@@ -82,56 +128,70 @@ class SpectReconstructionStage:
         ]
         return proj_dim1, proj_dim2, num_proj, ww_peak, ww_lower, ww_upper
 
-    def _get_cor_data(self, cor_path):
+    def _get_cor_data(self, cor_path: str) -> np.ndarray:  
+        """Load and sanitize COR file in-place to 1D if needed."""  
         cor_path_new = np.loadtxt(cor_path).astype(float)
         if cor_path_new.ndim == 2:
             cor_path_new = cor_path_new[:, 0]
             np.savetxt(cor_path, cor_path_new)
         return cor_path_new
 
-    def _expected_proj_len(self, proj_dim1, proj_dim2, num_proj):
+    def _expected_proj_len(self, proj_dim1: int, proj_dim2: int, num_proj: int) -> int: 
+        """Return expected flattened length of an (n_proj, y, x) projection stack."""  
         return int(num_proj) * int(proj_dim1) * int(proj_dim2)
 
-    def _reshape_projection_data(self, projection, proj_dim1, proj_dim2, num_proj):
+    def _reshape_projection_data(
+        self, projection: np.ndarray, proj_dim1: int, proj_dim2: int, num_proj: int  
+    ) -> np.ndarray:  
+        """Reshape flat `.a00` data into (n_proj, x, y) with y-flip to match convention."""  
         return np.transpose(
             projection.reshape((num_proj, proj_dim2, proj_dim1))[:, ::-1],
             (0, 2, 1),
         )
 
-    def _convert_counts_to_mbq_per_ml(self, reconstructed_image, sensitivity, frame_duration,
-                                     output_pixel_width, output_slice_width):
+    def _convert_counts_to_mbq_per_ml(
+        self,
+        reconstructed_image: torch.Tensor,
+        sensitivity: float,
+        frame_duration: float,
+        output_pixel_width: float,
+        output_slice_width: float,
+    ) -> torch.Tensor:
+        """Convert reconstructed counts to MBq/mL using SIMIND sensitivity + geometry."""
         return (
-            reconstructed_image.cpu().T # counts
-            / sensitivity # counts / s / MBq
-            / frame_duration # sec
-            / (output_pixel_width ** 2) # cm^2
-            / output_slice_width # cm
-        ) # MBq / cm^3 = MBq / ml
+            reconstructed_image.cpu().T  # counts
+            / sensitivity                 # counts / s / MBq
+            / frame_duration              # sec
+            / (output_pixel_width ** 2)   # cm^2
+            / output_slice_width          # cm
+        )  # MBq / cm^3 = MBq / ml
 
-    def _get_recon_img(self, likelihood, sensitivity, frame_duration):
+    def _get_recon_img(self, likelihood: PoissonLogLikelihood, sensitivity: float, frame_duration: float) -> sitk.Image:  
+        """Run the configured reconstruction algorithm and return a SimpleITK image."""
         if self.recon_algorithm.lower() == "osem":
             recon_algorithm = OSEM(likelihood)
         else:
-            raise ValueError(f"Unsupported reconstruction algorithm: {self.recon_algorithm}") # TODO: will need add more later
-        
+            raise ValueError(f"Unsupported reconstruction algorithm: {self.recon_algorithm}")
+
         reconstructed_image = recon_algorithm(
             n_iters=self.iterations,
             n_subsets=self.subsets,
         )
 
         recon_img_arr = self._convert_counts_to_mbq_per_ml(
-            reconstructed_image, 
-            sensitivity, 
-            frame_duration , 
-            self.output_pixel_width, 
-            self.output_slice_width, 
-        ) # MBq / ml
+            reconstructed_image,
+            sensitivity,
+            frame_duration,
+            self.output_pixel_width,
+            self.output_slice_width,
+        )  # MBq / ml
 
         recon_img = sitk.GetImageFromArray(recon_img_arr)
         recon_img.SetSpacing(self.output_tuple)
         return recon_img
 
-    def _write_recon_atn_img(self, amap):
+    def _write_recon_atn_img(self, amap: torch.Tensor) -> Tuple[sitk.Image, str]:  
+        """Write the attenuation map (from SIMIND headers) as a NIfTI in recon grid."""
         recon_atn_path = os.path.join(self.output_dir, f"{self.prefix}_atn_img.nii")
 
         if os.path.exists(recon_atn_path):
@@ -146,11 +206,12 @@ class SpectReconstructionStage:
     # -----------------------------
     # main
     # -----------------------------
-    def run(self):
+    def run(self) -> Any: 
+        """Run reconstruction for each PBPK frame and write NIfTI recon outputs."""
         self.context.require("class_seg")
 
         roi_list = list(self.context.class_seg.keys())
-        
+
         # sensitivity comes from output_dir (calibration runs in output_dir)
         calibration_file = os.path.join(self.output_dir, "calib.res")
         if not os.path.exists(calibration_file):
@@ -172,7 +233,7 @@ class SpectReconstructionStage:
                 raise FileNotFoundError(f"Missing COR file: {cor_path}")
             _ = self._get_cor_data(cor_path)
             object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h, cor_path)
-        else: 
+        else:
             object_meta, proj_meta = self._get_object_and_proj_metadata(photopeak_h)
 
         proj_dim1, proj_dim2, num_proj, ww_peak, ww_lower, ww_upper = self._get_metadata_from_header(
@@ -233,6 +294,7 @@ class SpectReconstructionStage:
             photopeak = torch.tensor(photopeak.copy()).to(pytomography.device)
             upper = torch.tensor(upper.copy()).to(pytomography.device)
 
+            # Add Poisson noise realizations
             photopeak_realization = torch.poisson(photopeak)
             lower_realization = torch.poisson(lower)
             upper_realization = torch.poisson(upper)
@@ -256,12 +318,13 @@ class SpectReconstructionStage:
             recon_paths.append(recon_output_path)
 
         recon_atn_img, recon_atn_path = self._write_recon_atn_img(amap)
-        
+
         all_frames_exist = all(
             os.path.exists(os.path.join(self.output_dir, f"{self.prefix}_{t}min.nii"))
-            for t in self.frame_start)
-        
-        if self.mode == "production" and all_frames_exist:
+            for t in self.frame_start
+        )
+
+        if self.mode == "PRODUCTION" and all_frames_exist:
             work_dir = self.context.extras.get("simind_work_dir", None)
 
             # only delete if it's a separate work directory (not your main output_dir)
@@ -269,17 +332,7 @@ class SpectReconstructionStage:
                 work_dir_abs = os.path.abspath(work_dir)
                 out_abs = os.path.abspath(self.output_dir)
 
-                # guardrails to avoid nuking outputs by mistake
                 if work_dir_abs != out_abs and os.path.exists(work_dir_abs):
                     shutil.rmtree(work_dir_abs, ignore_errors=True)
-
-        # Update context -> for now not needed downstream
-        #self.context.spect_sim_output_dir = self.output_dir
-        #self.context.recon_paths = recon_paths
-        #self.context.recon_atn_img = recon_atn_img
-        #self.context.recon_atn_path = recon_atn_path
-
-        #self.context.extras["recon_output_dir"] = self.output_dir
-        #self.context.extras["recon_header_dir_used"] = self.header_dir
 
         return self.context

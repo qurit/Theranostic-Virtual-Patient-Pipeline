@@ -47,7 +47,7 @@ The **Theranostic Digital Twins (TDT) Pipeline** is a quantitative software fram
 
 Because uptake and dose can vary substantially between patients, TDTs support personalized evaluation of therapy strategies by enabling controlled, repeatable experiments across anatomy, kinetics, and imaging physics. A key objective is demonstrating agreement with patient measurements to support reliability and validation; longer-term, this work supports **Virtual Theranostic Trials (VTTs)** and patient-specific dosimetry prediction.
 
-
+![TDT Pipeline Overview](docs/pipeline_overview.png)
 ---
 
 ## Installation 

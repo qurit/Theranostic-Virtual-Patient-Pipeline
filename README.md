@@ -2,6 +2,8 @@
 
 > This pipeline creates patient-specific **theranostic digital twins** by combining CT-based anatomy/segmentation with PBPK kinetics and physics-based SPECT simulation/reconstruction, supporting research in diagnosis and therapy planning.
 
+---
+
 ## Quick Start (minimal run)
 1) Create + activate environment
 ```bash
@@ -30,6 +32,7 @@ cp inputs/config_default.json inputs/config.json
 python -u main.py --config_file inputs/config.json --input_ct_dir inputs/ct_input
 ```
 Outputs are written into a per-CT folder (see Outputs).
+
 ---
 
 ## Overview
@@ -48,11 +51,11 @@ The **Theranostic Digital Twins (TDT) Pipeline** is a quantitative software fram
 Because uptake and dose can vary substantially between patients, TDTs support personalized evaluation of therapy strategies by enabling controlled, repeatable experiments across anatomy, kinetics, and imaging physics. A key objective is demonstrating agreement with patient measurements to support reliability and validation; longer-term, this work supports **Virtual Theranostic Trials (VTTs)** and patient-specific dosimetry prediction.
 
 ![TDT Pipeline Overview](docs/pipeline_overview.png)
+
 ---
 
 ## Installation 
-
-### Requirments 
+### Requirements
 - Conda (Miniconda/Anaconda)
 - A working C/C++ build toolchain for compiling certain Python dependencies (varies by OS)
 - **PyCNO** installed separately (see Step 2)
@@ -123,6 +126,8 @@ echo $SMC_DIR
 In your JSON config, set the SIMIND directory to the folder that contains the `simind` executable:
 - `spect_simulation.SIMINDDirectory` = directory that contains the `simind` executable
 
+---
+
 ## Usage
 > This repo is run via `main.py` using a user-editable JSON config and CT inputs placed under `inputs/`.  
 > If you have not installed the required Python dependencies and external tools (e.g., SIMIND), please see **Installation** first.
@@ -192,6 +197,37 @@ python -u main.py \
   --save_ct_scan \
   --save_config
 ```
+
+---
+
+## Outputs
+Each CT input generates an output folder under output_folder.title with subfolders per stage.
+
+### Example Structure
+
+TDT_Output__CT_1/
+  spect_preprocessing_outputs/
+    (resampled CT, ROI labelmaps, masks, attenuation binaries, metadata)
+  pbpk_outputs/
+    (PBPK parameters, TACs, per-organ activity maps, summaries)
+  spect_simulation_outputs/
+    simind_work/
+    spect_simulation_<roi>_tot_w1.a00
+    spect_simulation_<roi>_tot_w2.a00
+    spect_simulation_<roi>_tot_w3.a00
+    spect_simulation_<t>min_tot_w1.a00
+    spect_simulation_<t>min_tot_w2.a00
+    spect_simulation_<t>min_tot_w3.a00
+    calib.res
+    spect_simulation_<t>min.nii
+    spect_simulation_atn_img.nii
+    
+**Notes**:
+- *_tot_w1/w2/w3.a00 are SIMIND energy-window projection totals (lower / photopeak / upper).
+- calib.res is produced by SIMIND calibration and used to convert counts → activity.
+- *_min.nii are reconstructed SPECT volumes.
+
+---
 
 ## Contact
 Maintainer: Peter Yazdi

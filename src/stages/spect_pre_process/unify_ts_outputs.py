@@ -63,7 +63,7 @@ class TdtRoiUnifyStage:
 
     Notes
     -----
-    The label mapping is defined externally in `data/tdt_map.json`:
+    The label mapping is defined externally in `src/data/tdt_map.json`:
     - "total": maps TotalSegmentator *label id* -> *ROI name*
     - "head_glands_cavities": maps TotalSegmentator *label id* -> *ROI name*
     - "TDT_Pipeline": maps TDT *label id* -> *TDT ROI name*
@@ -83,7 +83,7 @@ class TdtRoiUnifyStage:
         # This assumes the stage file lives at:
         #   <repo_root>/stages/spect_pre_process/unify_ts_outputs.py
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) 
-        self.ts_map_path: str = os.path.join(repo_root, "data", "tdt_map.json")  
+        self.ts_map_path: str = os.path.join(repo_root, "src/data", "tdt_map.json")  
         if not os.path.exists(self.ts_map_path):
             raise FileNotFoundError(f"Class map json not found: {self.ts_map_path}")
 

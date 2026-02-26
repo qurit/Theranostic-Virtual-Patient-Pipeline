@@ -30,15 +30,15 @@ from typing import Any, Dict, Literal, Optional
 # -----------------------------
 # Local imports
 # -----------------------------
-from context import Context
+from src.io.context import Context
 
-from stages.spect_pre_process.segmentation_stage import TotalSegmentationStage
-from stages.spect_pre_process.unify_ts_outputs import TdtRoiUnifyStage
-from stages.spect_pre_process.preprocessing_stage import SimindPreprocessStage
+from src.stages.spect_pre_process.segmentation_stage import TotalSegmentationStage
+from src.stages.spect_pre_process.unify_ts_outputs import TdtRoiUnifyStage
+from src.stages.spect_pre_process.preprocessing_stage import SimindPreprocessStage
 
-from stages.pbpk.pbpk_stage import PbpkStage
-from stages.spect_simulation.simind_stage import SimindSimulationStage
-from stages.spect_simulation.reconstruction_stage import SpectReconstructionStage
+from src.stages.pbpk.pbpk_stage import PbpkStage
+from src.stages.spect_simulation.simind_stage import SimindSimulationStage
+from src.stages.spect_simulation.reconstruction_stage import SpectReconstructionStage
 
 
 CTInputType = Literal["nii", "dicom"]

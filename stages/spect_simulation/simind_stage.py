@@ -138,14 +138,14 @@ class SimindSimulationStage:
         """
         Copy SIMIND template files into the work directory.
 
-        Required templates in <repo_root>/bin:
+        Required templates in <repo_root>/data:
         - scattwin.win  -> renamed to <prefix>.win
         - smc.smc       -> renamed to <prefix>.smc
         """  
-        scatwin_file = os.path.join(self.repo_root, "bin", "scattwin.win")
+        scatwin_file = os.path.join(self.repo_root, "data", "scattwin.win")
         shutil.copyfile(scatwin_file, os.path.join(self.work_dir, f"{self.prefix}.win"))
 
-        smc_file = os.path.join(self.repo_root, "bin", "smc.smc")
+        smc_file = os.path.join(self.repo_root, "data", "smc.smc")
         shutil.copyfile(smc_file, os.path.join(self.work_dir, f"{self.prefix}.smc"))
 
     def _organ_totals_exist(self, organ_name: str) -> bool:  
@@ -185,12 +185,12 @@ class SimindSimulationStage:
         Notes
         -----
         - If `calib.res` already exists, this is a no-op.
-        - Requires `jaszak.smc` to exist in <repo_root>/bin.
+        - Requires `jaszak.smc` to exist in <repo_root>/data.
         """  
         if self._calibration_exists():
             return
 
-        jaszak_file = os.path.join(self.repo_root, "bin", "jaszak.smc")
+        jaszak_file = os.path.join(self.repo_root, "data", "jaszak.smc")
         shutil.copyfile(jaszak_file, os.path.join(self.output_dir, "jaszak.smc"))
 
         cmd = (  

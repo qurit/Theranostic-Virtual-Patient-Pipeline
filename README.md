@@ -1,6 +1,6 @@
 # Theranostic Digital Twins (TDT) Pipeline
 
-> This pipeline creates patient-specific **theranostic digital twins** by combining CT-based anatomy/segmentation with PBPK kinetics and physics-based SPECT simulation/reconstruction, supporting research in diagnosis and therapy planning.
+This pipeline creates patient-specific **theranostic digital twins** by combining CT-based anatomy/segmentation with PBPK kinetics and physics-based SPECT simulation/reconstruction, supporting research in diagnosis and therapy planning.
 
 ---
 
@@ -17,7 +17,7 @@ git clone https://github.com/qurit/PyCNO.git
 cd PyCNO
 pip install -e .
 ```
-3) Ensure SIMIND is installed and available
+3) Ensure SIMIND is installed and available (NOTE: if not installed, see installation)
 ```bash
 which simind
 echo $SMC_DIR
@@ -50,7 +50,7 @@ The **Theranostic Digital Twins (TDT) Pipeline** is a quantitative software fram
 
 Because uptake and dose can vary substantially between patients, TDTs support personalized evaluation of therapy strategies by enabling controlled, repeatable experiments across anatomy, kinetics, and imaging physics. A key objective is demonstrating agreement with patient measurements to support reliability and validation; longer-term, this work supports **Virtual Theranostic Trials (VTTs)** and patient-specific dosimetry prediction.
 
-![TDT Pipeline Overview](docs/pipeline_overview.png)
+![TDT Pipeline Overview](figures/pipeline_overview.png)
 
 ---
 
@@ -61,11 +61,11 @@ Because uptake and dose can vary substantially between patients, TDTs support pe
 - **PyCNO** installed separately (see Step 2)
 - **SIMIND** installed separately (see Step 3)
 #### Recommended
-- Linux for full pipeline runs (SIMIND workflow tends to be simplest on Linux HPC/servers)
+- Linux for full pipeline runs
 - Enough disk for intermediate SIMIND outputs (can be large depending on photons / frames / ROIs)
 
 ### 1) Create the conda environment (from `environment.yml`)
-> Note: PyCNO is installed separately (Step 2). If `environment.yml` contains a `pycno` entry, remove it before creating the environment.
+> Note: PyCNO is installed separately (Step 2).
 ```bash
     conda env create -f environment.yml
     conda activate TDT_env
@@ -91,38 +91,13 @@ Download SIMIND from the official site and follow their installation instruction
     https://www.msf.lu.se/en/research/simind-monte-carlo-program/downloads
 ```
 
-#### Step 2 — Add SIMIND to your shell environment (recommended)
-Add the following to your shell startup file so SIMIND is on your PATH and `SMC_DIR` is set.
-
-For **zsh** or **bash**:
-```bash
-    nano ~/.zshrc
-   # or
-    nano ~/.bashrc
-```
-
-Paste (edit the path if your SIMIND install is elsewhere):
-```bash
-    # SIMIND setup
-    SIM_DIR="$HOME/simind/simind"
-    export SMC_DIR="$SIM_DIR/smc_dir/"
-    export PATH="$SIM_DIR:$PATH"
-```
-
-Reload your shell:
-```bash
-    source ~/.zshrc
-    # or
-    source ~/.bashrc
-```
-
 (Optional sanity check)
 ```bash
 which simind
 echo $SMC_DIR
 ```
 
-#### Step 3 — Point the pipeline config to SIMIND
+#### Step 2 — Point the pipeline config to SIMIND
 In your JSON config, set the SIMIND directory to the folder that contains the `simind` executable:
 - `spect_simulation.SIMINDDirectory` = directory that contains the `simind` executable
 

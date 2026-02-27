@@ -1,0 +1,12 @@
+name: tdt_env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.11.14
+  - pip=26.0.1
+  - pip:
+    - json-minify==0.3.0
+    - pytomography==3.4.0
+    - totalsegmentator==2.12.0
+

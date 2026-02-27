@@ -10,7 +10,7 @@ into a single multilabel NIfTI volume in the TDT pipeline label space.
 
 Key behaviors
 -------------
-- Uses `data/tdt_map.json` to translate TotalSegmentator class IDs -> ROI names -> TDT IDs.
+- Uses `src/data/tdt_map.json` to translate TotalSegmentator class IDs -> ROI names -> TDT IDs.
 - Paints a single output volume (`*_tdt_roi_seg.nii.gz`) aligned to the CT NIfTI (affine/header).
 - Only maps ROIs that were requested in the TotalSegmentator plan (`context.totseg_plan`).
 
@@ -83,7 +83,7 @@ class TdtRoiUnifyStage:
         # This assumes the stage file lives at:
         #   <repo_root>/stages/spect_pre_process/unify_ts_outputs.py
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) 
-        self.ts_map_path: str = os.path.join(repo_root, "src/data", "tdt_map.json")  
+        self.ts_map_path: str = os.path.join(repo_root, "data", "tdt_map.json")  
         if not os.path.exists(self.ts_map_path):
             raise FileNotFoundError(f"Class map json not found: {self.ts_map_path}")
 

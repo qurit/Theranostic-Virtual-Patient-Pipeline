@@ -1,12 +1,13 @@
 name: tdt_env
 channels:
-  - defaults
   - conda-forge
+  - defaults
 dependencies:
   - python=3.11.14
-  - pip=26.0.1
+  - pip
+  - git
   - pip:
-    - json-minify==0.3.0
-    - pytomography==3.4.0
-    - totalsegmentator==2.12.0
-
+      - json-minify==0.3.0
+      - pytomography==3.4.0
+      - totalsegmentator==2.12.0
+      - pycno @ git+https://github.com/qurit/PyCNO.git@main

@@ -2,36 +2,6 @@
 
 This pipeline creates patient-specific **theranostic digital twins** by combining CT-based anatomy/segmentation with PBPK kinetics and physics-based SPECT simulation/reconstruction, supporting research in diagnosis and therapy planning.
 
----
-
-## Quick Start (minimal run)
-1) Create + activate environment
-```bash
-conda env create -f environment.yml
-conda activate TDT_env
-```
-2) Install PyCNO (PBPK dependency)
-```bash
-cd ~
-git clone https://github.com/qurit/PyCNO.git
-cd PyCNO
-pip install -e .
-```
-3) Ensure SIMIND is installed and available (NOTE: if not installed, see installation)
-```bash
-which simind
-echo $SMC_DIR
-```
-4) Prepare inputs
-```bash
-mkdir -p inputs/ct_input
-cp inputs/config_default.json inputs/config.json
-```
-5) Run
-```bash
-python -u main.py --config_file inputs/config.json --input_ct_dir inputs/ct_input
-```
-Outputs are written into a per-CT folder (see Outputs).
 
 ---
 
@@ -58,31 +28,19 @@ Because uptake and dose can vary substantially between patients, TDTs support pe
 ### Requirements
 - Conda (Miniconda/Anaconda)
 - A working C/C++ build toolchain for compiling certain Python dependencies (varies by OS)
-- **PyCNO** installed separately (see Step 2)
-- **SIMIND** installed separately (see Step 3)
+- **SIMIND** installed separately (see Step 2)
 #### Recommended
 - Linux for full pipeline runs
 - Enough disk for intermediate SIMIND outputs (can be large depending on photons / frames / ROIs)
 
 ### 1) Create the conda environment (from `environment.yml`)
-> Note: PyCNO is installed separately (Step 2).
 ```bash
     conda env create -f environment.yml
     conda activate TDT_env
 ```
 > This environment includes the required Python dependencies used by the pipeline (including TotalSegmentator and PyTomography).
 
-### 2) PBPK dependency (PyCNO)
-**PyCNO is required for the PBPK stage.**
-Install PyCNO from source:
-```bash
-    cd ~
-    git clone https://github.com/qurit/PyCNO.git
-    cd PyCNO 
-    pip install -e .
-```
-
-### 3) Install SIMIND (external)
+### 2) Install SIMIND (external)
 **SIMIND is an external dependency** and must be installed separately (it is not a Python package).
 
 #### Step 1 — Download and install SIMIND

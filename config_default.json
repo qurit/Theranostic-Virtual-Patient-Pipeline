@@ -1,6 +1,6 @@
 { 
     "output_folder": {
-        "title": "TDT_Output" // Output folder name, should say this title plus CT name
+        "title": "Testing_output" // Output folder name, should say this title plus CT name
     },
     "subdir_names": { // Output directory names (one for each module)
         "spect_preprocessing": "spect_preprocessing_outputs",

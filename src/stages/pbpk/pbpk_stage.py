@@ -354,6 +354,7 @@ class PbpkStage:
             "heart": "Heart",
             "spleen": "Spleen",
             "salivary_glands": "SG",
+            "synthetic_lesion": "Tumor1",
         }
         return roi_to_voi.get(roi_name, None)
 

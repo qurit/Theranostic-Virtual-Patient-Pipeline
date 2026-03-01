@@ -52,6 +52,13 @@ class Context:
 
         # Stage 2: ROI Unification
         self.tdt_roi_seg_path: Optional[str] = None
+        
+        # Stage 2.5: Synthetic Lesions
+        self.synthetic_lesions_outdir: Optional[str] = None
+        self.synthetic_lesions_results: Optional[Dict[str, Any]] = None
+        self.synthetic_lesions_backup_seg_path: Optional[str] = None
+        self.synthetic_lesions_global_binary_path: Optional[str] = None
+        self.synthetic_lesions_global_labels_path: Optional[str] = None
 
         # Stage 3: Preprocessing
         self.body_seg_arr: Optional[Any] = None  # np.ndarray (float32 mask)  

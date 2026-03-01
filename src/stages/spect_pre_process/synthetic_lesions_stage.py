@@ -65,6 +65,16 @@ from json_minify import json_minify
 
 
 class SyntheticLesionsStage:
+    """
+    Generate synthetic spherical lesions in a unified TDT ROI segmentation, and overwrite
+    `context.tdt_roi_seg_path` by painting lesions as the `synthetic_lesion` label.
+
+    Notes
+    -----
+    - This stage runs after `TdtRoiUnifyStage` and before `SimindPreprocessStage`.
+    - We append "synthetic_lesion" to `config["spect_preprocessing"]["roi_subset"]` so the
+    preprocessing filter does not zero out lesion voxels. :contentReference[oaicite:5]{index=5}
+    """
     def __init__(self, context: Any) -> None:
         self.context = context
 
@@ -77,7 +87,10 @@ class SyntheticLesionsStage:
 
         self.tdt_roi_seg_path: Optional[str] = getattr(context, "tdt_roi_seg_path", None)
         
-        self.roi_subset: List[str] = self.context.config["spect_preprocessing"]["roi_subset"]
+        roi_subset = self.context.config["spect_preprocessing"]["roi_subset"]
+        if isinstance(roi_subset, str):
+            roi_subset = [roi_subset]
+        self.roi_subset: List[str] = [str(r).strip() for r in roi_subset if str(r).strip()]
 
         # Load label map from src/data/tdt_map.json (same approach as your other stages)
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -138,7 +151,7 @@ class SyntheticLesionsStage:
         tom_map_zyx: np.ndarray | None = None,
     ) -> np.ndarray:
         """
-Returns weight for each candidate center voxel based on the specified probability scheme.
+        Returns weight for each candidate center voxel based on the specified probability scheme.
         """
         prob = prob.lower()
         n = cand_zyx.shape[0]
@@ -415,7 +428,7 @@ Returns weight for each candidate center voxel based on the specified probabilit
 
             # Update global lesion masks
             global_lesion_binary_zyx |= roi_lesion_binary_zyx
-            for local_id in range(1, int(roi_lesion_labels_zyx.max()) + 1):
+            for local_id in range(1, int(roi_lesion_labels_zyx.max()) + 1): # iterate over lesion ids in this ROI
                 global_lesion_labels_zyx[roi_lesion_labels_zyx == local_id] = global_next_id
                 global_next_id += 1
 

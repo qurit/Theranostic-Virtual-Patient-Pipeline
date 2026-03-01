@@ -35,7 +35,7 @@ from src.io.context import Context
 from src.stages.spect_pre_process.segmentation_stage import TotalSegmentationStage
 from src.stages.spect_pre_process.unify_ts_outputs import TdtRoiUnifyStage
 from src.stages.spect_pre_process.preprocessing_stage import SimindPreprocessStage
-from src.stages.synthetic_lesions.synthetic_lesions_stage import SyntheticLesionsStage
+from src.stages.spect_pre_process.synthetic_lesions_stage import SyntheticLesionsStage
 
 from src.stages.pbpk.pbpk_stage import PbpkStage
 from src.stages.spect_simulation.simind_stage import SimindSimulationStage
@@ -369,7 +369,7 @@ class TdtPipeline:
         print("PBPK Stage completed.")
 
         logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)
-        break # 
+        quit()
         # -----------------------------
         # Stage 5: SIMIND
         # -----------------------------

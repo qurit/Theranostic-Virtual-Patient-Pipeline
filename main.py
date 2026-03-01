@@ -369,7 +369,7 @@ class TdtPipeline:
         print("PBPK Stage completed.")
 
         logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)
-        quit()
+
         # -----------------------------
         # Stage 5: SIMIND
         # -----------------------------

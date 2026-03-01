@@ -35,6 +35,7 @@ from src.io.context import Context
 from src.stages.spect_pre_process.segmentation_stage import TotalSegmentationStage
 from src.stages.spect_pre_process.unify_ts_outputs import TdtRoiUnifyStage
 from src.stages.spect_pre_process.preprocessing_stage import SimindPreprocessStage
+from src.stages.synthetic_lesions.synthetic_lesions_stage import SyntheticLesionsStage
 
 from src.stages.pbpk.pbpk_stage import PbpkStage
 from src.stages.spect_simulation.simind_stage import SimindSimulationStage
@@ -64,6 +65,8 @@ class TdtPipeline:
         If True, saves a copy of the config JSON into the output folder. 
     mode : {"DEBUG", "PRODUCTION"}, default="PRODUCTION"
         Affects logging verbosity.
+    synthetic_lesions : bool, default=False
+        If True, runs the synthetic lesions stage to generate lesions in the CT scan.
 
     Attributes
     ----------
@@ -88,6 +91,7 @@ class TdtPipeline:
         save_ct_scan: bool = False,
         save_config: bool = False,  
         mode: Literal["DEBUG", "PRODUCTION"] = "PRODUCTION",
+        synthetic_lesions: bool = False,
     ) -> None:
         self.config_path: str = config_path
         self.ct_input: str = ct_input
@@ -98,6 +102,7 @@ class TdtPipeline:
         self.save_ct_scan: bool = save_ct_scan  # if True, saves a copy of the CT input in the output folder for provenance
         self.save_config: bool = save_config  # if True, saves config json into the CT output folder  
         self.mode: Literal["DEBUG", "PRODUCTION"] = mode
+        self.synthetic_lesions: bool = synthetic_lesions  # if True, runs the synthetic lesions stage to generate lesions in the CT scan
 
         self.config: Dict[str, Any] = {}  # will be populated in _config_setup()
         self.output_folder_path: str = ""  # will be set in _config_setup()
@@ -118,6 +123,13 @@ class TdtPipeline:
         self._context_setup()
         if not self.logging_on:
             self.context._log_enabled = False
+            
+        self.run_synthetic_lesions = self.synthetic_lesions 
+        if self.run_synthetic_lesions and self.config["synthetic_lesions"]['specs'] is not None:
+            self.run_synthetic_lesions = True
+        elif self.run_synthetic_lesions and self.config["synthetic_lesions"]['specs'] is None:
+            self.logger.info("Synthetic lesions stage is disabled based on missing specs in config.")
+            self.run_synthetic_lesions = False
 
     def _save_ct_input_copy(self) -> None:
         """
@@ -272,6 +284,7 @@ class TdtPipeline:
         1. TotalSegmentator
         2. Unification of TS outputs to TDT ROIs
         3. Preprocess for SIMIND
+        3.5. Generate synthetic lesions (if enabled)
         4. PBPK
         5. SIMIND Simulation
         6. SPECT Reconstruction
@@ -330,6 +343,19 @@ class TdtPipeline:
         print("SIMIND Preprocessing Stage completed.")
 
         logger.info("Stage end: SIMIND Preprocessing | elapsed=%.2fs", time.perf_counter() - t_stage)
+
+        # -----------------------------
+        # Stage 3.5: Generate synthetic lesions (if enabled)
+        # -----------------------------
+        if self.run_synthetic_lesions:
+            logger.info("Stage start: Synthetic Lesions Generation")
+            t_stage = time.perf_counter()
+
+            print("Running Synthetic Lesions Generation Stage...")
+            context = SyntheticLesionsStage(context).run()
+            print("Synthetic Lesions Generation Stage completed.")
+
+            logger.info("Stage end: Synthetic Lesions Generation | elapsed=%.2fs", time.perf_counter() - t_stage)
 
         # -----------------------------
         # Stage 4: PBPK
@@ -415,6 +441,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="PRODUCTION",
         choices=["DEBUG", "PRODUCTION"],
     )
+    
+    parser.add_argument(
+        "--synthetic_lesions",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Generate synthetic lesions. Use --synthetic_lesions / --no-synthetic_lesions. Default: disabled",
+    )
 
     return parser
 
@@ -453,6 +486,7 @@ def main() -> int:
                 save_ct_scan=args.save_ct_scan,
                 save_config=args.save_config, 
                 mode=args.mode,
+                synthetic_lesions=args.synthetic_lesions,
             )
             pipeline.run()
         except Exception as e:

@@ -9,8 +9,38 @@
     },
     "spect_preprocessing": { // preprocessing parameters
         "name" : "spect_preprocessing", // File name prefix
-        "roi_subset":["kidney", "liver" , "prostate", "spleen", "heart","salivary_glands"], // ROIs      
+        "roi_subset":["kidney", "liver" , "prostate", "spleen", "heart", "salivary_glands"], // ROIs      
         "xy_dim": 256 // x and y dimensions for resizing for SIMIND input, z will be scaled based on same ratio
+    },
+    "synthetic_lesions": { // Synthetic lesions parameters
+        "name" : "synthetic_lesions", // File name prefix
+        "specs" : {
+            // Example lesion specifications for each organ. Adjust as needed.
+            // roi name:{
+            //   n_lesions: (int) number of lesions to generate   
+            //   radii_mm: (list) list of lesion radii in mm (length should match n_lesions)
+            //   prob: (str) probability model for lesion placement ("uniform", "gaussian", "TOM", "user_defined")
+            //   sigma_mm: (float) standard deviation for gaussian probability model (only used if prob="gaussian")
+            //   margin_mm: (float) extra safety margin for boundary + overlap unit (mm)
+            //   seed: (int) random seed for reproducibility (only affects "uniform"
+            //}
+            "liver": {
+                "n_lesions": 5,
+                "radii_mm": [5, 10, 15, 15, 15],
+                "prob": "gaussian",     // "uniform", "gaussian", "TOM", "user_defined"
+                "sigma_mm": 60.0,       // only used if prob="gaussian"
+                "margin_mm": 1.0,       // extra safety margin for boundary + overlap unit (mm)
+                "seed": 0 // random seed for reproducibility (only affects "uniform" and "gaussian" prob models)
+                },
+            "kidney": {
+                "n_lesions": 3,
+                "radii_mm": [5, 15, 15],
+                "prob": "uniform", 
+                "sigma_mm": 40.0, // will ignore since prob != "gaussian"
+                "margin_mm": 1.0, 
+                "seed": 1 
+            }
+        }
     },
     "pbpk": { // PBPK parameters
         "name" : "pbpk", // File name prefix

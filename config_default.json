@@ -39,7 +39,18 @@
                 "sigma_mm": 40.0, // will ignore since prob != "gaussian"
                 "margin_mm": 1.0, 
                 "seed": 1 
-            }
+            },
+            "prostate": {
+                "n_lesions": 2,
+                "radii_mm": [2, 2],
+                "prob": "user_defined",
+                "margin_mm": 1.0,
+                "seed": 2,
+                "user_centers_zyx": [
+                    [120, 128, 128],
+                    [120, 132, 128]
+                ]
+                }
         }
     },
     "pbpk": { // PBPK parameters

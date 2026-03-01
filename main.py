@@ -283,8 +283,8 @@ class TdtPipeline:
         Stages:
         1. TotalSegmentator
         2. Unification of TS outputs to TDT ROIs
+        2.5. Generate synthetic lesions (if enabled)
         3. Preprocess for SIMIND
-        3.5. Generate synthetic lesions (if enabled)
         4. PBPK
         5. SIMIND Simulation
         6. SPECT Reconstruction
@@ -331,21 +331,10 @@ class TdtPipeline:
         print("TDT ROI Unification Stage completed.")
 
         logger.info("Stage end: TDT ROI Unification | elapsed=%.2fs", time.perf_counter() - t_stage)
-
+        
+        
         # -----------------------------
-        # Stage 3: Preprocess for SIMIND
-        # -----------------------------
-        logger.info("Stage start: SIMIND Preprocessing")
-        t_stage = time.perf_counter()
-
-        print("Running SIMIND Preprocessing Stage...")
-        context = SimindPreprocessStage(context).run()
-        print("SIMIND Preprocessing Stage completed.")
-
-        logger.info("Stage end: SIMIND Preprocessing | elapsed=%.2fs", time.perf_counter() - t_stage)
-
-        # -----------------------------
-        # Stage 3.5: Generate synthetic lesions (if enabled)
+        # Stage 2.5: Generate synthetic lesions (if enabled)
         # -----------------------------
         if self.run_synthetic_lesions:
             logger.info("Stage start: Synthetic Lesions Generation")
@@ -358,6 +347,18 @@ class TdtPipeline:
             logger.info("Stage end: Synthetic Lesions Generation | elapsed=%.2fs", time.perf_counter() - t_stage)
 
         # -----------------------------
+        # Stage 3: Preprocess for SIMIND
+        # -----------------------------
+        logger.info("Stage start: SIMIND Preprocessing")
+        t_stage = time.perf_counter()
+
+        print("Running SIMIND Preprocessing Stage...")
+        context = SimindPreprocessStage(context).run()
+        print("SIMIND Preprocessing Stage completed.")
+
+        logger.info("Stage end: SIMIND Preprocessing | elapsed=%.2fs", time.perf_counter() - t_stage)
+        
+        # -----------------------------
         # Stage 4: PBPK
         # -----------------------------
         logger.info("Stage start: PBPK")
@@ -368,7 +369,7 @@ class TdtPipeline:
         print("PBPK Stage completed.")
 
         logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)
-
+        break # 
         # -----------------------------
         # Stage 5: SIMIND
         # -----------------------------

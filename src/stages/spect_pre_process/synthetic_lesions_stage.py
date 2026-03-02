@@ -6,7 +6,7 @@ Goal
 Generate synthetic spherical lesions inside user-specified organ ROIs (from the unified TDT ROI seg),
 then insert them into the unified segmentation as the "synthetic_lesion" label (from tdt_map.json).
 
-Key behavior (matches your notebook logic)
+Key behavior 
 ------------------------------------------
 Constraints:
 - Center must be inside ROI.
@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import os
 import json
+import logging 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -68,13 +69,13 @@ class SyntheticLesionsStage:
     """
     Generate synthetic spherical lesions in a unified TDT ROI segmentation, and overwrite
     `context.tdt_roi_seg_path` by painting lesions as the `synthetic_lesion` label.
-
-    Notes
-    -----
-    - This stage runs after `TdtRoiUnifyStage` and before `SimindPreprocessStage`.
-    - We append "synthetic_lesion" to `config["spect_preprocessing"]["roi_subset"]` so the
-    preprocessing filter does not zero out lesion voxels. :contentReference[oaicite:5]{index=5}
     """
+    AUTO_MIN_RADIUS_MM: float = 0.5
+    AUTO_SHRINK_FACTOR: float = 0.85
+    AUTO_MAX_SHRINK_ITERS: int = 30
+    AUTO_START_FRAC: float = 0.60  # fraction used in r_start heuristic (volume-based)
+    MAX_LESION_PLACEMENT_ATTEMPTS: int = 4000
+
     def __init__(self, context: Any) -> None:
         self.context = context
 
@@ -86,11 +87,25 @@ class SyntheticLesionsStage:
         self.specs: Optional[Dict[str, Dict[str, Any]]] = self.cfg.get("specs", None)
 
         self.tdt_roi_seg_path: Optional[str] = getattr(context, "tdt_roi_seg_path", None)
-        
+
         roi_subset = self.context.config["spect_preprocessing"]["roi_subset"]
         if isinstance(roi_subset, str):
             roi_subset = [roi_subset]
         self.roi_subset: List[str] = [str(r).strip() for r in roi_subset if str(r).strip()]
+
+        # ---- Logger + tunable constants ----
+        self.logger = getattr(self.context, "logger", logging.getLogger(__name__))  
+        self.default_seed: int = int(self.cfg.get("default_seed", 0))  
+
+        self.auto_min_radius_mm: float = float(self.cfg.get("auto_min_radius_mm", self.AUTO_MIN_RADIUS_MM))  
+        self.auto_shrink_factor: float = float(self.cfg.get("auto_shrink_factor", self.AUTO_SHRINK_FACTOR)) 
+        self.auto_max_shrink_iters: int = int(self.cfg.get("auto_max_shrink_iters", self.AUTO_MAX_SHRINK_ITERS)) 
+        self.auto_start_frac: float = float(self.cfg.get("auto_start_frac", self.AUTO_START_FRAC))  
+        self.max_lesion_placement_attempts: int = int(  
+            self.cfg.get("max_lesion_placement_attempts", self.MAX_LESION_PLACEMENT_ATTEMPTS)  
+        )  
+
+        self.lesions_outdir = os.path.join(self.output_dir, f"{self.prefix}_outputs")
 
         # Load label map from src/data/tdt_map.json (same approach as your other stages)
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -113,24 +128,6 @@ class SyntheticLesionsStage:
             )
         self.synthetic_lesion_id: int = int(self.tdt_name2id["synthetic_lesion"])
 
-        self.lesions_outdir = os.path.join(self.output_dir, f"{self.prefix}_outputs")
-
-    @staticmethod
-    def _xyz_to_zyx(arr_xyz: np.ndarray) -> np.ndarray:
-        # NIfTI arrays are typically (X,Y,Z). We operate in (Z,Y,X).
-        return np.transpose(arr_xyz, (2, 1, 0))
-
-    @staticmethod
-    def _zyx_to_xyz(arr_zyx: np.ndarray) -> np.ndarray:
-        """Transpose back from (Z,Y,X) to (X,Y,Z) for NIfTI saving."""
-        return np.transpose(arr_zyx, (2, 1, 0))
-
-    @staticmethod
-    def _spacing_zyx_from_nifti(nii: nib.Nifti1Image) -> np.ndarray:
-        """Extract voxel spacing in (Z,Y,X) order from NIfTI header."""
-        sx, sy, sz = nii.header.get_zooms()[:3]
-        return np.array([sz, sy, sx], dtype=np.float64)
-
     @staticmethod
     def _phys_dist_mm(
         idx1_zyx: Sequence[int],
@@ -150,9 +147,6 @@ class SyntheticLesionsStage:
         sigma_mm: float | None = None,
         tom_map_zyx: np.ndarray | None = None,
     ) -> np.ndarray:
-        """
-        Returns weight for each candidate center voxel based on the specified probability scheme.
-        """
         prob = prob.lower()
         n = cand_zyx.shape[0]
 
@@ -165,7 +159,7 @@ class SyntheticLesionsStage:
             roi_pts = np.argwhere(mask_zyx)
             if roi_pts.size == 0:
                 raise ValueError("ROI mask is empty; cannot compute gaussian centroid.")
-            mu = roi_pts.mean(axis=0)  # (z,y,x) centroid in voxel coords
+            mu = roi_pts.mean(axis=0)
 
             dz = (cand_zyx[:, 0] - mu[0]) * spacing_zyx[0]
             dy = (cand_zyx[:, 1] - mu[1]) * spacing_zyx[1]
@@ -194,24 +188,20 @@ class SyntheticLesionsStage:
         sigma_mm: float | None = None,
         margin_mm: float = 1.0,
         seed: int = 0,
-        max_attempts_per_lesion: int = 4000,
+        max_attempts_per_lesion: int = 4000,  
         tom_map_zyx: np.ndarray | None = None,
         user_centers_zyx: List[Tuple[int, int, int]] | None = None,
+        dist_mm_in: np.ndarray | None = None,
     ) -> Tuple[List[Tuple[int, int, int]], List[float], np.ndarray]:
-        """
-        Returns:
-          centers_zyx: list of (z,y,x) ints
-          radii_mm:    list of radii (same order)
-          dist_mm:     distance-to-boundary map (mm) inside ROI
-        """
         rng = np.random.default_rng(seed)
-        dist_mm = distance_transform_edt(mask_zyx.astype(np.uint8), sampling=spacing_zyx)
+        dist_mm = dist_mm_in if dist_mm_in is not None else distance_transform_edt(
+            mask_zyx.astype(np.uint8), sampling=spacing_zyx
+        )
 
         centers_zyx: List[Tuple[int, int, int]] = []
         placed_r: List[float] = []
         prob = prob.lower()
 
-        # user defined: validate and skip sampling
         if prob == "user_defined":
             if user_centers_zyx is None:
                 raise ValueError("prob='user_defined' but user_centers_zyx=None")
@@ -232,7 +222,6 @@ class SyntheticLesionsStage:
 
             return centers_zyx, placed_r, dist_mm
 
-        # sample lesions sequentially (same as notebook)
         for i, r in enumerate(radii_mm, start=1):
             cand_mask = dist_mm >= (r + margin_mm)
             cand = np.argwhere(cand_mask)
@@ -283,11 +272,6 @@ class SyntheticLesionsStage:
         radii_mm: List[float],
         spacing_zyx: np.ndarray,
     ) -> np.ndarray:
-        """
-        Returns int16 labelmap (Z,Y,X):
-          0 = background
-          1..N = lesion id
-        """
         Z, Y, X = mask_zyx.shape
         labels = np.zeros((Z, Y, X), dtype=np.int16)
 
@@ -314,52 +298,31 @@ class SyntheticLesionsStage:
 
         return labels
 
-    @staticmethod
-    def _write_json(path: str, payload: Dict[str, Any]) -> None:
-        """Write JSON with indentation for readability (for QC metadata files)."""
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-
-    def _assert_inputs_exist(self) -> None:
-        """Check that required inputs exist before running. Raises informative errors if not."""
-        if self.specs is None or len(self.specs) == 0:
-            return
-        if self.tdt_roi_seg_path is None or not os.path.exists(self.tdt_roi_seg_path):
-            raise FileNotFoundError(f"Unified TDT ROI seg not found: {self.tdt_roi_seg_path}")
-
     def run(self) -> Any:
-        """
-        Run Synthetic Lesions Stage.
-
-        Returns
-        -------
-        context : Context-like
-            Updated context object with `tdt_roi_seg_path` set.
-        """
-        self._assert_inputs_exist() # early check to fail fast if inputs are missing
-
-        # no-op if disabled
+        # skips lesion generation if no specs provided
         if self.specs is None or len(self.specs) == 0:
+            self.logger.info("No synthetic lesion specs provided; skipping lesion generation.")  
             self.context.synthetic_lesions_outdir = None
             self.context.synthetic_lesions_results = {}
             return self.context
 
+        if self.tdt_roi_seg_path is None or not os.path.exists(self.tdt_roi_seg_path):  
+            raise FileNotFoundError(f"Unified TDT ROI seg not found: {self.tdt_roi_seg_path}")  
+
         os.makedirs(self.lesions_outdir, exist_ok=True)
 
-        # IMPORTANT:
-        # Preprocessing stage filters labels based on config["spect_preprocessing"]["roi_subset"].
-        # We do NOT want lesion voxels to be dropped to 0, so ensure "synthetic_lesion" is included
-        # AFTER segmentation/unify has already run (so TotalSegmentationStage doesn't see it).
-        self.roi_subset = [str(r).strip() for r in self.roi_subset if str(r).strip()] # remove empty/whitespace entries
+        self.roi_subset = [str(r).strip() for r in self.roi_subset if str(r).strip()]
         if "synthetic_lesion" not in self.roi_subset:
             self.roi_subset.append("synthetic_lesion")
             self.context.config["spect_preprocessing"]["roi_subset"] = self.roi_subset
 
         # Load unified seg
         seg_nii = nib.load(self.tdt_roi_seg_path)
-        seg_xyz = seg_nii.get_fdata(dtype=np.float32)  # load as float32 to avoid issues with large int16 lesion labels
-        seg_zyx = self._xyz_to_zyx(seg_xyz)
-        spacing_zyx = self._spacing_zyx_from_nifti(seg_nii)
+        seg_xyz = seg_nii.get_fdata(dtype=np.float32)
+        seg_zyx = np.transpose(seg_xyz, (2, 1, 0))
+
+        spacing_xyz = np.array(seg_nii.header.get_zooms()[:3], dtype=np.float64)  
+        spacing_zyx = np.array([spacing_xyz[2], spacing_xyz[1], spacing_xyz[0]], dtype=np.float64) 
 
         # Backup pre-lesion seg (for QC)
         backup_path = os.path.join(self.lesions_outdir, "tdt_roi_seg_pre_lesions.nii.gz")
@@ -369,53 +332,145 @@ class SyntheticLesionsStage:
 
         results: Dict[str, Any] = {}
 
-        global_lesion_binary_zyx = np.zeros(seg_zyx.shape, dtype=np.uint8) # binary mask of all lesions across all ROIs (for QC)
-        global_lesion_labels_zyx = np.zeros(seg_zyx.shape, dtype=np.int16) # labelmap of all lesions across all ROIs, with unique lesion ids (for QC)
-        global_next_id = 1 # start lesion IDs at 1 in global labelmap (0 is background). This is separate from the "synthetic_lesion" label in the unified seg, which remains constant (e.g. 8) for all lesion voxels.
+        global_lesion_binary_zyx = np.zeros(seg_zyx.shape, dtype=np.uint8)
+        global_lesion_labels_zyx = np.zeros(seg_zyx.shape, dtype=np.int16)
+        global_next_id = 1
 
         for roi_name, spec in self.specs.items():
             if roi_name not in self.tdt_name2id:
                 raise ValueError(f"ROI '{roi_name}' not found in TDT_Pipeline label map.")
-
             if roi_name == "synthetic_lesion":
                 raise ValueError("Do not specify lesions inside ROI='synthetic_lesion'.")
+            if not isinstance(spec, dict):
+                raise ValueError(f"[{roi_name}] spec must be a dict.")
 
-            roi_id = int(self.tdt_name2id[roi_name]) # get integer label for this ROI from tdt_map.json
-            organ_mask_zyx = (seg_zyx == roi_id) # binary mask of the current organ/ROI in (Z,Y,X) order
+            # ----- Validate n_lesions early -----
+            n_lesions_raw = spec.get("n_lesions", None)
+            if not isinstance(n_lesions_raw, int):
+                raise ValueError(f"[{roi_name}] n_lesions must be an int (got {type(n_lesions_raw)}).")
+            if n_lesions_raw <= 0:
+                raise ValueError(f"[{roi_name}] n_lesions must be > 0 (got {n_lesions_raw}).")
+            n_lesions = n_lesions_raw
+
+            prob = str(spec.get("prob", "uniform"))
+            prob_l = prob.lower()
+
+            sigma_mm = spec.get("sigma_mm", None)
+            margin_mm = float(spec.get("margin_mm", 1.0))
+            seed = int(spec.get("seed", self.default_seed))  
+            user_centers_raw = spec.get("user_centers_zyx", None)
+
+            if prob_l == "gaussian" and sigma_mm is None:
+                raise ValueError(f"[{roi_name}] prob='gaussian' requires sigma_mm in spec.")
+
+            radii_raw = spec.get("radii_mm", None)
+            auto_radii = ("radii_mm" not in spec) or (radii_raw is None)
+
+            if prob_l == "user_defined" and auto_radii:
+                raise ValueError(f"[{roi_name}] prob='user_defined' requires radii_mm (cannot be None).")
+
+            if (not auto_radii) and (not isinstance(radii_raw, list)):
+                raise ValueError(f"[{roi_name}] radii_mm must be a list or null/None for auto radii.")
+
+            radii_mm: List[float] = []
+            if not auto_radii:
+                if len(radii_raw) != n_lesions:
+                    raise ValueError(f"[{roi_name}] radii_mm length must match n_lesions ({n_lesions}).")
+                radii_mm = [float(r) for r in radii_raw]
+                if any((not np.isfinite(r)) or (r <= 0) for r in radii_mm):
+                    raise ValueError(f"[{roi_name}] all radii_mm must be finite and > 0.")
+
+            user_centers_zyx: Optional[List[Tuple[int, int, int]]] = None
+            if prob_l == "user_defined":
+                if user_centers_raw is None:
+                    raise ValueError(f"[{roi_name}] prob='user_defined' requires user_centers_zyx in config.")
+                if not isinstance(user_centers_raw, list):
+                    raise ValueError(f"[{roi_name}] user_centers_zyx must be a list of [z,y,x].")
+                if len(user_centers_raw) != n_lesions:
+                    raise ValueError(f"[{roi_name}] user_centers_zyx length must match n_lesions ({n_lesions}).")
+                user_centers_zyx = [tuple(map(int, c)) for c in user_centers_raw]
+
+            roi_id = int(self.tdt_name2id[roi_name])
+            organ_mask_zyx = (seg_zyx == roi_id)
             if organ_mask_zyx.sum() == 0:
                 raise ValueError(f"[{roi_name}] mask is empty in unified segmentation.")
 
-            n_lesions = int(spec.get("n_lesions", 0))
-            radii_mm = [float(r) for r in spec.get("radii_mm", [])]
-            prob = str(spec.get("prob", "uniform"))
-            sigma_mm = spec.get("sigma_mm", None)
-            margin_mm = float(spec.get("margin_mm", 1.0))
-            seed = int(spec.get("seed", 0))
-            user_centers_raw = spec.get("user_centers_zyx", None)
+            dist_mm_pre = distance_transform_edt(organ_mask_zyx.astype(np.uint8), sampling=spacing_zyx)
 
-            if n_lesions <= 0:
-                raise ValueError(f"[{roi_name}] n_lesions must be > 0")
-            if len(radii_mm) != n_lesions:
-                raise ValueError(f"[{roi_name}] radii_mm length must match n_lesions")
+            # -----------------------------
+            # Auto radii: skip if fails
+            # -----------------------------
+            if auto_radii:
+                max_r_mm = float(dist_mm_pre.max()) - margin_mm
+                if max_r_mm < self.auto_min_radius_mm:
+                    self.logger.warning(  
+                        f"[{roi_name}] ROI too small for auto lesions (max feasible ~ {max_r_mm:.3f}mm). Skipping ROI."  
+                    )  
+                    continue  
 
-            user_centers_zyx: Optional[List[Tuple[int, int, int]]] = None
-            if prob.lower() == "user_defined":
-                if user_centers_raw is None:
-                    raise ValueError(f"[{roi_name}] prob='user_defined' requires user_centers_zyx in config.")
-                user_centers_zyx = [tuple(map(int, c)) for c in user_centers_raw]
+                roi_vox = int(organ_mask_zyx.sum())
+                roi_vol_mm3 = float(roi_vox) * float(np.prod(spacing_zyx))
 
-            centers_zyx, placed_radii, dist_mm = self._place_lesion_centers(
-                mask_zyx=organ_mask_zyx,
-                radii_mm=radii_mm,
-                spacing_zyx=spacing_zyx,
-                prob=prob,
-                sigma_mm=float(sigma_mm) if sigma_mm is not None else None,
-                margin_mm=margin_mm,
-                seed=seed,
-                max_attempts_per_lesion=4000, # hard coded
-                tom_map_zyx=None,
-                user_centers_zyx=user_centers_zyx,
-            )
+                r_eq = float((3.0 * roi_vol_mm3 / (4.0 * np.pi)) ** (1.0 / 3.0)) if roi_vol_mm3 > 0 else 0.0 # equivalent radius of a sphere with same volume as ROI
+                scale = max(1.0, float(n_lesions) ** (1.0 / 3.0)) # scale factor to reduce r_eq based on number of lesions (more lesions -> smaller radius to fit)
+                r_start = min(max_r_mm, self.auto_start_frac * (r_eq / scale))  
+                r_start = max(self.auto_min_radius_mm, float(r_start))  
+
+                rng_auto = np.random.default_rng(seed)
+                radii_try = sorted(
+                    [float(rng_auto.uniform(self.auto_min_radius_mm, r_start)) for _ in range(n_lesions)], 
+                    reverse=True,
+                )
+
+                placed_ok = False  
+                last_err: Exception | None = None
+                centers_zyx: List[Tuple[int, int, int]] = []  
+                placed_radii: List[float] = []  
+                dist_mm = dist_mm_pre  
+
+                for shrink_i in range(self.auto_max_shrink_iters):  
+                    try:
+                        centers_zyx, placed_radii, dist_mm = self._place_lesion_centers(
+                            mask_zyx=organ_mask_zyx,
+                            radii_mm=radii_try,
+                            spacing_zyx=spacing_zyx,
+                            prob=prob,
+                            sigma_mm=float(sigma_mm) if sigma_mm is not None else None,
+                            margin_mm=margin_mm,
+                            seed=seed + shrink_i,
+                            max_attempts_per_lesion=self.max_lesion_placement_attempts,  
+                            tom_map_zyx=None,
+                            user_centers_zyx=None,
+                            dist_mm_in=dist_mm_pre,
+                        )
+                        placed_ok = True  
+                        break
+                    except RuntimeError as e:
+                        last_err = e
+                        radii_try = [max(self.auto_min_radius_mm, r * self.auto_shrink_factor) for r in radii_try] 
+                        if max(radii_try) <= self.auto_min_radius_mm + 1e-6:  
+                            break  
+
+                if not placed_ok:  
+                    self.logger.warning(  
+                        f"[{roi_name}] Auto radii placement failed; skipping ROI. Last error: {last_err}"  
+                    )  
+                    continue  
+
+            else: # Manual radii provided, place directly (will raise if fails)
+                centers_zyx, placed_radii, dist_mm = self._place_lesion_centers(
+                    mask_zyx=organ_mask_zyx,
+                    radii_mm=radii_mm,
+                    spacing_zyx=spacing_zyx,
+                    prob=prob,
+                    sigma_mm=float(sigma_mm) if sigma_mm is not None else None,
+                    margin_mm=margin_mm,
+                    seed=seed,
+                    max_attempts_per_lesion=self.max_lesion_placement_attempts,  
+                    tom_map_zyx=None,
+                    user_centers_zyx=user_centers_zyx,
+                    dist_mm_in=dist_mm_pre,
+                )
 
             roi_lesion_labels_zyx = self._build_lesion_labelmap(
                 mask_zyx=organ_mask_zyx,
@@ -426,19 +481,17 @@ class SyntheticLesionsStage:
             roi_lesion_binary_zyx = (roi_lesion_labels_zyx > 0).astype(np.uint8)
             roi_organ_minus_lesions_zyx = (organ_mask_zyx & (roi_lesion_binary_zyx == 0)).astype(np.uint8)
 
-            # Update global lesion masks
             global_lesion_binary_zyx |= roi_lesion_binary_zyx
-            for local_id in range(1, int(roi_lesion_labels_zyx.max()) + 1): # iterate over lesion ids in this ROI
+            for local_id in range(1, int(roi_lesion_labels_zyx.max()) + 1):
                 global_lesion_labels_zyx[roi_lesion_labels_zyx == local_id] = global_next_id
                 global_next_id += 1
 
-            # Save per-ROI QC outputs
             roi_dir = os.path.join(self.lesions_outdir, roi_name)
             os.makedirs(roi_dir, exist_ok=True)
 
-            roi_labels_xyz = self._zyx_to_xyz(roi_lesion_labels_zyx).astype(np.int16)
-            roi_bin_xyz = self._zyx_to_xyz(roi_lesion_binary_zyx).astype(np.uint8)
-            roi_minus_xyz = self._zyx_to_xyz(roi_organ_minus_lesions_zyx).astype(np.uint8)
+            roi_labels_xyz = np.transpose(roi_lesion_labels_zyx, (2, 1, 0)).astype(np.int16)
+            roi_bin_xyz = np.transpose(roi_lesion_binary_zyx, (2, 1, 0)).astype(np.uint8)
+            roi_minus_xyz = np.transpose(roi_organ_minus_lesions_zyx, (2, 1, 0)).astype(np.uint8)
 
             labels_path = os.path.join(roi_dir, f"{roi_name}_lesions_labels.nii.gz")
             bin_path = os.path.join(roi_dir, f"{roi_name}_lesions_binary.nii.gz")
@@ -475,12 +528,12 @@ class SyntheticLesionsStage:
                     "organ_minus_lesions": minus_path,
                 },
             }
-            self._write_json(meta_path, meta)
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
             results[roi_name] = meta
 
-        # Save global lesion masks (QC)
-        global_bin_xyz = self._zyx_to_xyz(global_lesion_binary_zyx).astype(np.uint8)
-        global_lbl_xyz = self._zyx_to_xyz(global_lesion_labels_zyx).astype(np.int16)
+        global_bin_xyz = np.transpose(global_lesion_binary_zyx, (2, 1, 0)).astype(np.uint8)
+        global_lbl_xyz = np.transpose(global_lesion_labels_zyx, (2, 1, 0)).astype(np.int16)
 
         global_bin_path = os.path.join(self.lesions_outdir, "all_lesions_binary.nii.gz")
         global_lbl_path = os.path.join(self.lesions_outdir, "all_lesions_labels.nii.gz")
@@ -493,24 +546,19 @@ class SyntheticLesionsStage:
         out_gl.set_data_dtype(np.int16)
         nib.save(out_gl, global_lbl_path)
 
-        # ---------------------------------------------------------
-        # Insert lesions into unified seg as synthetic_lesion label
-        # ---------------------------------------------------------
         seg_zyx_mod = seg_zyx.copy()
         seg_zyx_mod[global_lesion_binary_zyx > 0] = np.uint8(self.synthetic_lesion_id)
-        seg_xyz_mod = self._zyx_to_xyz(seg_zyx_mod).astype(np.uint8)
+        seg_xyz_mod = np.transpose(seg_zyx_mod, (2, 1, 0)).astype(np.uint8)
 
-        # OVERWRITE original unified seg on disk
         out_seg = nib.Nifti1Image(seg_xyz_mod, seg_nii.affine, seg_nii.header.copy())
         out_seg.set_data_dtype(np.uint8)
         nib.save(out_seg, self.tdt_roi_seg_path)
 
-        # Update context
         self.context.synthetic_lesions_outdir = self.lesions_outdir
         self.context.synthetic_lesions_results = results
         self.context.synthetic_lesions_backup_seg_path = backup_path
         self.context.synthetic_lesions_global_binary_path = global_bin_path
         self.context.synthetic_lesions_global_labels_path = global_lbl_path
-        self.context.tdt_roi_seg_path = self.tdt_roi_seg_path  # same path, overwritten contents
+        self.context.tdt_roi_seg_path = self.tdt_roi_seg_path
 
         return self.context

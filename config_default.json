@@ -12,45 +12,53 @@
         "roi_subset":["kidney", "liver" , "prostate", "spleen", "heart", "salivary_glands"], // ROIs      
         "xy_dim": 256 // x and y dimensions for resizing for SIMIND input, z will be scaled based on same ratio
     },
-    "synthetic_lesions": { // Synthetic lesions parameters
-        "name" : "synthetic_lesions", // File name prefix
-        "specs" : {
-            // Example lesion specifications for each organ. Adjust as needed.
-            // roi name:{
-            //   n_lesions: (int) number of lesions to generate   
-            //   radii_mm: (list) list of lesion radii in mm (length should match n_lesions)
-            //   prob: (str) probability model for lesion placement ("uniform", "gaussian", "TOM", "user_defined")
-            //   sigma_mm: (float) standard deviation for gaussian probability model (only used if prob="gaussian")
-            //   margin_mm: (float) extra safety margin for boundary + overlap unit (mm)
-            //   seed: (int) random seed for reproducibility (only affects "uniform"
-            //}
-            "liver": {
-                "n_lesions": 5,
-                "radii_mm": [5, 10, 15, 15, 15],
-                "prob": "gaussian",     // "uniform", "gaussian", "TOM", "user_defined"
-                "sigma_mm": 60.0,       // only used if prob="gaussian"
-                "margin_mm": 1.0,       // extra safety margin for boundary + overlap unit (mm)
-                "seed": 0 // random seed for reproducibility (only affects "uniform" and "gaussian" prob models)
-                },
-            "kidney": {
-                "n_lesions": 3,
-                "radii_mm": [5, 15, 15],
-                "prob": "uniform", 
-                "sigma_mm": 40.0, // will ignore since prob != "gaussian"
-                "margin_mm": 1.0, 
-                "seed": 1 
-            },
-            "prostate": {
-                "n_lesions": 2,
-                "radii_mm": [2, 2],
-                "prob": "user_defined",
-                "margin_mm": 1.0,
-                "seed": 2,
-                "user_centers_zyx": [
-                    [120, 128, 128],
-                    [120, 132, 128]
-                ]
-                }
+    "synthetic_lesions": {
+        "name": "synthetic_lesions_test",
+        "default_seed": 123,
+        "auto_shrink_factor": 0.85,
+        "auto_max_shrink_iters": 30,
+        "auto_start_frac": 0.6,
+        "max_lesion_placement_attempts": 4000,
+        "specs": {
+        "liver": {
+            "n_lesions": 5,
+            "prob": "gaussian",
+            "sigma_mm": 60.0,
+            "margin_mm": 1.0,
+            "seed": 0
+        },
+        "kidney": {
+            "n_lesions": 3,
+            "radii_mm": [5.0, 8.0, 10.0],
+            "prob": "uniform",
+            "margin_mm": 1.0,
+            "seed": 1
+        },
+        "spleen": {
+            "n_lesions": 6,
+            "prob": "uniform",
+            "margin_mm": 1.0,
+            "seed": 2
+        },
+        "heart": {
+            "n_lesions": 2,
+            "radii_mm": [4.0, 6.0],
+            "prob": "gaussian",
+            "sigma_mm": 25.0,
+            "margin_mm": 1.0,
+            "seed": 3
+        },
+        "prostate": {
+            "n_lesions": 2,
+            "radii_mm": [2.0, 2.0],
+            "prob": "user_defined",
+            "margin_mm": 1.0,
+            "seed": 4,
+            "user_centers_zyx": [
+            [120, 128, 128],
+            [120, 132, 128]
+            ]
+        }
         }
     },
     "pbpk": { // PBPK parameters

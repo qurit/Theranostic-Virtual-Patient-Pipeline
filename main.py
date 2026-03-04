@@ -36,9 +36,8 @@ from src.stages.spect_pre_process.segmentation_stage import TotalSegmentationSta
 from src.stages.spect_pre_process.unify_ts_outputs import TdtRoiUnifyStage
 from src.stages.spect_pre_process.preprocessing_stage import SimindPreprocessStage
 from src.stages.spect_pre_process.synthetic_lesions_stage import SyntheticLesionsStage
-
-from src.stages.pbpk.pbpk_stage import PbpkStage
 from src.stages.spect_simulation.simind_stage import SimindSimulationStage
+from src.stages.pbpk.pbpk_stage import PbpkStage
 from src.stages.spect_simulation.reconstruction_stage import SpectReconstructionStage
 
 
@@ -280,14 +279,18 @@ class TdtPipeline:
         """
         Execute the pipeline stages sequentially for this CT.
 
-        Stages:
-        1. TotalSegmentator
-        2. Unification of TS outputs to TDT ROIs
-        2.5. Generate synthetic lesions (if enabled)
-        3. Preprocess for SIMIND
-        4. PBPK
-        5. SIMIND Simulation
-        6. SPECT Reconstruction
+        Phases:
+        1. Segmentation of CT
+            1.1 TotalSegmentator -> segmentation of CT stage
+            1.2. Unification of TS outputs to TDT ROIs Map stage
+            1.3. Generate synthetic lesions (if enabled) stage
+        2. SPECT simulation (via SIMIND):
+            2.1 Preprocess for SIMIND (generate SIMIND input files) stage
+            2.2 Run SIMIND simulation stage
+        3. SPECT post-processing:
+            3.1 PBPK Activity maps applied to projections stage
+            3.2 SPECT Reconstruction (ie. OSEM + TEW scatter) stage
+        4. (Future) Dosimetry 
 
         Returns
         -------
@@ -308,8 +311,9 @@ class TdtPipeline:
         logger.info("Pipeline start | mode=%s", self.mode)
         logger.info("CT input | path=%s | type=%s", self.ct_input, self.ct_input_type)
 
+        # -----------------------------  Segmentation of CT ----------------------------- 
         # -----------------------------
-        # Stage 1: TotalSegmentator
+        # Stage 1.1: TotalSegmentator -> segmentation of CT 
         # -----------------------------
         logger.info("Stage start: TotalSegmentator")
         t_stage = time.perf_counter()
@@ -321,7 +325,7 @@ class TdtPipeline:
         logger.info("Stage end: TotalSegmentator | elapsed=%.2fs", time.perf_counter() - t_stage)
 
         # -----------------------------
-        # Stage 2: Unification of TS outputs to TDT ROIs
+        # Stage 1.2: Unification of TS outputs to TDT ROIs Map
         # -----------------------------
         logger.info("Stage start: TDT ROI Unification")
         t_stage = time.perf_counter()
@@ -332,9 +336,8 @@ class TdtPipeline:
 
         logger.info("Stage end: TDT ROI Unification | elapsed=%.2fs", time.perf_counter() - t_stage)
         
-        
         # -----------------------------
-        # Stage 2.5: Generate synthetic lesions (if enabled)
+        # Stage 1.3: Generate synthetic lesions (if enabled)
         # -----------------------------
         if self.run_synthetic_lesions:
             logger.info("Stage start: Synthetic Lesions Generation")
@@ -346,8 +349,10 @@ class TdtPipeline:
 
             logger.info("Stage end: Synthetic Lesions Generation | elapsed=%.2fs", time.perf_counter() - t_stage)
 
+
+        # -----------------------------  SPECT simulation (via SIMIND)`` ----------------------------- 
         # -----------------------------
-        # Stage 3: Preprocess for SIMIND
+        # Stage 2.1: Preprocess for SIMIND (generate SIMIND input files)
         # -----------------------------
         logger.info("Stage start: SIMIND Preprocessing")
         t_stage = time.perf_counter()
@@ -359,19 +364,7 @@ class TdtPipeline:
         logger.info("Stage end: SIMIND Preprocessing | elapsed=%.2fs", time.perf_counter() - t_stage)
         
         # -----------------------------
-        # Stage 4: PBPK
-        # -----------------------------
-        logger.info("Stage start: PBPK")
-        t_stage = time.perf_counter()
-
-        print("Running PBPK Stage...")
-        context = PbpkStage(context).run()
-        print("PBPK Stage completed.")
-
-        logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)
-
-        # -----------------------------
-        # Stage 5: SIMIND
+        # Stage 2.2: Run SIMIND simulation
         # -----------------------------
         logger.info("Stage start: SIMIND Simulation")
         t_stage = time.perf_counter()
@@ -382,8 +375,21 @@ class TdtPipeline:
 
         logger.info("Stage end: SIMIND Simulation | elapsed=%.2fs", time.perf_counter() - t_stage)
 
+        # -----------------------------  SPECT post-processing ----------------------------- 
         # -----------------------------
-        # Stage 6: Recon
+        # Stage 3.1: PBPK Activity maps applied to projections 
+        # -----------------------------
+        logger.info("Stage start: PBPK")
+        t_stage = time.perf_counter()
+
+        print("Running PBPK Stage...")
+        #context = PbpkStage(context).run()
+        print("PBPK Stage completed.")
+
+        logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)
+
+        # -----------------------------
+        # Stage 3.2: SPECT Reconstruction (ie. OSEM + TEW scatter)
         # -----------------------------
         logger.info("Stage start: SPECT Reconstruction")
         t_stage = time.perf_counter()
@@ -395,6 +401,9 @@ class TdtPipeline:
         logger.info("Stage end: SPECT Reconstruction | elapsed=%.2fs", time.perf_counter() - t_stage)
 
         logger.info("Pipeline end | total_elapsed=%.2fs", time.perf_counter() - t_pipeline)
+        
+        # -----------------------------  Dosimetry ----------------------------- 
+        # TO DO: implement dosimetry stage 
 
         print("TDT Pipeline completed successfully.")
         return context

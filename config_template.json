@@ -1,0 +1,93 @@
+{ // Template for config.json file
+// Note: all paths should be absolute paths, and all file names should not include file extension (e.g., .nii) as the pipeline will add that automatically based on input files
+// For help contact pyazdi@bbcrc.ca
+
+    "output_folder_title" : "output_name", // Output folder name, should say this title plus _CT_{index}
+    "phase_1": { // Segmentation parameters for CT 
+        "sub_dir_name" : "ct_segmentation_outputs", // subdirectory name
+
+        "segmentation_stage": { // TotalSegmentator parameters
+            "file_prefix": "segmentation", // File name prefix
+            "roi_subset": ["kidney", "liver" , "prostate", "spleen", "heart","salivary_glands"]
+            },
+
+        "unification_stage" : {
+            "file_prefix": "unified_labels", // File name prefix
+            "label_map_path": "/home/jhubadmin/Theranostic-Virtual-Patient-Pipeline/src/data/tdt_map.json" // Path to label map json file for unification stage
+            },
+
+        "synthetic_lesions_stage" : {
+            "file_prefix": "synthetic_lesions", // File name prefix
+            "default_seed": 123, // Default random seed for reproducibility (note: individual lesion seeds in config will override this default seed)
+            "auto_shrink_factor": 0.85, // Used if no radius given, will iteratively shrink lesion until it fits in available space based on this factor
+            "auto_max_shrink_iters": 30, // used if no radius given, max number of iterations for auto-shrink (wont hard fail)
+            "auto_start_frac": 0.6, // used if no radius given, initial lesion size as fraction of max possible size that fits in available space (will be shrunk if it doesn't fit)
+            "max_lesion_placement_attempts": 4000, // Max attempts to find lesion centre
+            "specs": { // set none or empty dict to skip
+                // format
+                //"roi" str (required) :
+                // {
+                //  "n_lesions": int (required),
+                //  "radii_mm": list (floats of possible radii in mm, optional, if not provided will use auto-shrink method),
+                //  "prob": str ("gaussian", "uniform", "user_defined", "tom",optional),
+                //  "sigma_mm": float (only for gaussian prob),
+                //  "margin_mm": float (minimum margin from other lesions and organ boundaries),
+                // "seed": int (random seed for reproducibility of lesion placement, optional, will use default_seed if not provided),
+                // "user_centers_zyx": list of lists (only for user_defined prob, list of [z,y,x] coordinates for lesion centers in mm)
+                // }
+                "liver": {
+                    "n_lesions": 5,
+                    "prob": "gaussian",
+                    "sigma_mm": 60.0,
+                    "margin_mm": 1.0,
+                    "seed": 0
+                    }
+                }
+            }
+        },
+
+    "phase_2": { // SIMIND Simulation setup and run
+        "sub_dir_name" : "spect_simulation_outputs", // subdirectory name
+
+        "preprocess_simind_stage" : {
+            "file_prefix": "preprocess_simind", // File name prefix
+            "xy_dim": 256 // x and y dimensions for resizing for SIMIND input (x/value, y/value), z will be scaled based on same ratio
+            },
+
+        "simind_simulation_stage": { 
+            "file_prefix": "simind_simulation", // File name prefix
+            "SIMINDDirectory": "/home/jhubadmin/simind/simind",    // SIMIND: Path to SIMIND executable
+            "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
+            "Isotope": "lu177",    // Isotope type - refer to SIMIND documentation
+            "NumProjections": 64,   // Number of projections
+            "NumPhotons": 5e8,    // Number of photons
+            "EnergyWindowWidth": 20, // Energy window width [%] around photopeak, e.g., 20 for ±10%
+            "DetectorDistance": -10, // Detector distance [cm]. If this number is negative, patient contouring is enabled.
+            "DetectorWidth": 53.3,   // Detector width [cm] -> 53.3 is one found online
+            "DetectorLength": 0,  // Detector length [cm] NOTE: if value is 0 will use length of CT
+            "OutputImgSize": 256,   // Output image dimensions (shape)
+            "OutputPixelWidth": 0.25, // Output pixel spacing [cm] (x and y)
+            "OutputSliceWidth": 0.25, // Output slice spacing [cm] (z)
+            "NumCores": 0 // Number of CPU cores to use for parallel SIMIND simulations
+            }
+        },
+
+    "phase_3": { // spect post process : PBPK parameters and Spect reconstruction parameters
+        "sub_dir_name" : "spect_post_process_outputs", // subdirectory name
+
+        "pbpk_stage" : {
+            "file_prefix" : "pbpk", // File name prefix
+            "model_type": "PSMA", // Pipeline only supports "PSMA" model currently
+            "FrameStartTimes": [120, 1440, 2880, 4620, 9360],   // Start time of each frame [min] [240,1440,2880,5760]
+            "FrameDurations": [10,10,10,10,10], // Duration of each frame [seconds]
+            "VOIs": ["Tumor1","Tumor2","Kidney","Heart","SG","Bone","TumorRest","Spleen","Liver","Prostate","GI","Rest","Skin","Muscle","Brain","RedMarrow","Lungs","Adipose"],
+            "Randomization_Kidney_SG_Para": true // if True will randomize Kidney and SG parameters (recep density and lamda) NOTE: require have SG and Kidney in roi_subset
+            },
+        "spect_reconstruction_stage" : {
+            "file_prefix" : "spect_reconstruction", // File name prefix
+            "ReconstructionAlgorithm": "OSEM",   // Reconstruction algorithm (only OSEM supported currently)
+            "Iterations": 4,    // Number of iterations used in reconstruction
+            "Subsets": 8   // Number of subsets used in reconstruction
+            }
+        } 
+}      

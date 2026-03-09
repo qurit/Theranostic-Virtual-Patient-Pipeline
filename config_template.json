@@ -3,8 +3,8 @@
 // For help contact pyazdi@bbcrc.ca
 
     "output_folder_title" : "output_name", // Output folder name, should say this title plus _CT_{index}
-    "phase_1": { // Segmentation parameters for CT 
-        "sub_dir_name" : "ct_segmentation_outputs", // subdirectory name
+    "phase_1": { // Creating Digital Twin: segmentation, unification, synthetic lesion generation 
+        "sub_dir_name" : "digital_twin", // subdirectory name
 
         "segmentation_stage": { // TotalSegmentator parameters
             "file_prefix": "segmentation", // File name prefix
@@ -47,14 +47,14 @@
         },
 
     "phase_2": { // SIMIND Simulation setup and run
-        "sub_dir_name" : "spect_simulation_outputs", // subdirectory name
+        "sub_dir_name" : "spect_simulation", // subdirectory name
 
         "preprocess_simind_stage" : {
             "file_prefix": "preprocess_simind", // File name prefix
             "xy_dim": 256 // x and y dimensions for resizing for SIMIND input (x/value, y/value), z will be scaled based on same ratio
             },
 
-        "simind_simulation_stage": { 
+        "simind_stage": { 
             "file_prefix": "simind_simulation", // File name prefix
             "SIMINDDirectory": "/home/jhubadmin/simind/simind",    // SIMIND: Path to SIMIND executable
             "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
@@ -73,7 +73,7 @@
         },
 
     "phase_3": { // spect post process : PBPK parameters and Spect reconstruction parameters
-        "sub_dir_name" : "spect_post_process_outputs", // subdirectory name
+        "sub_dir_name" : "spect_post_process", // subdirectory name
 
         "pbpk_stage" : {
             "file_prefix" : "pbpk", // File name prefix

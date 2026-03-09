@@ -1,8 +1,8 @@
 """
-TotalSegmentator-based segmentation stage for the TDT pipeline. 
+TotalSegmentator-based segmentation stage for the TDT pipeline.
 
 This stage:
-- Standardizes the CT input into a NIfTI file in the stage output directory.
+- Standardizes the CT input into a NIfTI file in the phase output directory. 
 - Runs TotalSegmentator for the required task(s) based on a user-facing ROI list.
 - Writes ML output masks (NIfTI) for each task and stores paths + plan in `context`.
 
@@ -10,8 +10,8 @@ Expected Context interface
 --------------------------
 The incoming `context` object is expected to provide:
 - context.ct_input_path : str
-- context.config : dict (must include config["spect_preprocessing"]["roi_subset"] and ["name"])
-- context.subdir_paths : dict (must include subdir_paths["spect_preprocessing"])
+- context.config : dict (must include config["phase_1"]["segmentation_stage"]["roi_subset"] and ["file_prefix"]) 
+- context.subdir_paths : dict (must include subdir_paths["phase_1"])  
 
 On success, this stage sets:
 - context.ct_nii_path : str
@@ -20,13 +20,14 @@ On success, this stage sets:
 - context.head_glands_cavities_ml_path : Optional[str]
 - context.totseg_plan : dict (plan of tasks/roi subsets executed)
 
-Maintainer / contact: pyazdi@bccrc.ca  
-""" 
+Maintainer / contact: pyazdi@bccrc.ca
+"""
 
-from __future__ import annotations  
+from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, TypedDict, Union  
+import json  
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, TypedDict, Union
 
 import dicom2nifti
 import torch
@@ -39,7 +40,7 @@ from totalsegmentator.python_api import totalsegmentator
 # Some TotalSegmentator/torch combinations expect `torch.GradScaler` to exist.
 # This alias helps avoid runtime attribute errors in those environments.
 # -------------------------------------------------------------------------
-torch.GradScaler = _GradScaler  
+torch.GradScaler = _GradScaler
 
 
 # User-facing ROI names supported by this pipeline stage.
@@ -76,10 +77,11 @@ TDT_TO_TOTSEG = {
     "body": ("body", []),
 }
 
-CTInputType = Literal["nii", "dicom"] 
+CTInputType = Literal["nii", "dicom"]
 
-class TotSegPlan(TypedDict):  
-    """Execution plan describing which TotalSegmentator tasks will run. """  
+
+class TotSegPlan(TypedDict):
+    """Execution plan describing which TotalSegmentator tasks will run. """
 
     run_body: bool
     run_total: bool
@@ -102,42 +104,46 @@ class TotalSegmentationStage:
     -----
     - The stage always runs the `body` task if any ROI is requested (as written in original logic).
     - The `total` and `head_glands_cavities` tasks run only if required by the requested ROIs.
-    """  
-    
-    def __init__(self, context: Any) -> None:  
+    """
+
+    def __init__(self, context: Any) -> None:
         self.context = context
 
-        self.ct_input_path: str = context.ct_input_path 
+        self.ct_input_path: str = context.ct_input_path
 
-        # `roi_subset` in your config is in TDT ROI-space (e.g., "kidney", "salivary_glands").
-        self.roi_subset: Union[str, Sequence[str]] = context.config["spect_preprocessing"]["roi_subset"]  
-        self.ml: bool = True 
+        # `roi_subset` in config is in TDT ROI-space (e.g., "kidney", "salivary_glands").
+        self.roi_subset: Union[str, Sequence[str]] = context.config["phase_1"]["segmentation_stage"]["roi_subset"]  
+        self.ml: bool = True
 
-        self.output_dir: str = context.subdir_paths["spect_preprocessing"]  
-        os.makedirs(self.output_dir, exist_ok=True)
+        self.phase_output_dir: str = context.subdir_paths["phase_1"]  
+        self.output_dir: str = os.path.join(self.phase_output_dir, "segmentation_stage") 
+        self.work_dir: str = os.path.join(self.output_dir, "work_dir")  # working directory for intermediate files, logs, metadata, etc. 
+        os.makedirs(self.output_dir, exist_ok=True)  
+        os.makedirs(self.work_dir, exist_ok=True) 
 
-        self.prefix: str = context.config["spect_preprocessing"]["name"]  
+        self.prefix: str = context.config["phase_1"]["segmentation_stage"]["file_prefix"] 
 
-        self.ct_nii_path: Optional[str] = None  
-        self.body_ml_path: Optional[str] = None  
-        self.head_glands_cavities_ml_path: Optional[str] = None  
-        self.total_ml_path: Optional[str] = None 
+        self.ct_nii_path: Optional[str] = None
+        self.body_ml_path: Optional[str] = None
+        self.head_glands_cavities_ml_path: Optional[str] = None
+        self.total_ml_path: Optional[str] = None
+        self.metadata_path: str = os.path.join(self.work_dir, f"{self.prefix}_metadata.json")  
 
-    def _standardize_ct_to_nifti(self) -> None:  
+    def _standardize_ct_to_nifti(self) -> None:
         """
         Convert/standardize the CT input into a NIfTI file for downstream tools.
 
         Output
         ------
-        Writes: <output_dir>/<prefix>_ct.nii.gz
+        Writes: <phase_output_dir>/ct.nii.gz  
 
         Behavior
         --------
         - If input is a DICOM directory: converts series -> NIfTI (reoriented).
         - If input is an existing NIfTI (.nii/.nii.gz): re-writes into output_dir to standardize.
         - If output already exists, no-op.
-        """  
-        self.ct_nii_path = os.path.join(self.output_dir, f"{self.prefix}_ct.nii.gz")
+        """
+        self.ct_nii_path = os.path.join(self.phase_output_dir, "ct.nii.gz")  
         if os.path.exists(self.ct_nii_path):
             return
 
@@ -150,7 +156,7 @@ class TotalSegmentationStage:
         else:
             lower_input = self.ct_input_path.lower()
             if lower_input.endswith((".nii", ".nii.gz")):
-                # Copy/write into the stage directory for consistent downstream paths.
+                # Copy/write into the phase directory for consistent downstream paths.  
                 sitk.WriteImage(sitk.ReadImage(self.ct_input_path), self.ct_nii_path, True)
             else:
                 raise ValueError(
@@ -158,7 +164,7 @@ class TotalSegmentationStage:
                     f"(.nii/.nii.gz). Got: {self.ct_input_path}"
                 )
 
-    def _pre_totalsegmentation_checks(self) -> TotSegPlan:  
+    def _pre_totalsegmentation_checks(self) -> TotSegPlan:
         """
         Validate the user ROI list and compute which TotalSegmentator tasks to run.
 
@@ -171,7 +177,7 @@ class TotalSegmentationStage:
         ------
         ValueError
             If ROI list is empty or contains unsupported ROI names.
-        """  
+        """
         # -------- normalize rois --------
         rois = self.roi_subset
         if isinstance(rois, str):
@@ -192,7 +198,7 @@ class TotalSegmentationStage:
             )
 
         # -------- build plan --------
-        run_body = True # body task runs if any ROI is requested.
+        run_body = True  # body task runs if any ROI is requested.
 
         total_rois: List[str] = []
         head_rois: List[str] = []
@@ -214,7 +220,7 @@ class TotalSegmentationStage:
                         head_rois.append(x)
                         seen_head.add(x)
 
-        plan: TotSegPlan = {  
+        plan: TotSegPlan = {
             "run_body": run_body,
             "run_total": bool(total_rois),
             "run_head_glands_cavities": bool(head_rois),
@@ -224,7 +230,7 @@ class TotalSegmentationStage:
         }
         return plan
 
-    def _files_exist(self) -> Tuple[bool, bool, bool]:  
+    def _files_exist(self) -> Tuple[bool, bool, bool]:
         """
         Check whether expected output mask files already exist.
 
@@ -232,7 +238,7 @@ class TotalSegmentationStage:
         -------
         tuple[bool, bool, bool]
             (body_ml_done, head_glands_cavities_ml_done, total_ml_done)
-        """  
+        """
         # All expected outputs exist as ML masks (ml=True).
         self.body_ml_path = os.path.join(self.output_dir, f"{self.prefix}_body_ml.nii.gz")
         self.head_glands_cavities_ml_path = os.path.join(
@@ -246,7 +252,27 @@ class TotalSegmentationStage:
 
         return body_ml_done, head_glands_cavities_ml_done, total_ml_done
 
-    def run(self) -> Any:  
+    def _save_stage_metadata(self, plan: TotSegPlan) -> None:  
+        """Save stage-specific metadata for debugging / provenance."""  
+        metadata: Dict[str, Any] = {  
+            "stage": "segmentation_stage",  
+            "ct_input_path": self.ct_input_path,  
+            "ct_nii_path": self.ct_nii_path,  
+            "output_dir": self.output_dir,  
+            "work_dir": self.work_dir,  
+            "file_prefix": self.prefix,  
+            "ml": self.ml, 
+            "plan": plan, 
+            "body_ml_path": self.body_ml_path, 
+            "total_ml_path": self.total_ml_path if plan["run_total"] else None,  
+            "head_glands_cavities_ml_path": ( 
+                self.head_glands_cavities_ml_path if plan["run_head_glands_cavities"] else None  
+            ),  
+        }  
+        with open(self.metadata_path, "w", encoding="utf-8") as f: 
+            json.dump(metadata, f, indent=4)  
+
+    def run(self) -> Any:
         """
         Run the TotalSegmentator stage.
 
@@ -254,8 +280,8 @@ class TotalSegmentationStage:
         -------
         context : Context-like
             The updated context object (same instance as `self.context`).
-        """ 
-        self._standardize_ct_to_nifti() # standardize CT input to NIfTI for TotalSegmentator
+        """
+        self._standardize_ct_to_nifti()  # standardize CT input to NIfTI for TotalSegmentator
         assert self.ct_nii_path is not None  # for type checker; will raise if standardization failed.
 
         # --- validate user ROI list + compute which tasks to run ---
@@ -269,7 +295,7 @@ class TotalSegmentationStage:
             totalsegmentator(
                 self.ct_nii_path,
                 self.body_ml_path,
-                ml=self.ml,  
+                ml=self.ml,
                 task="body",
             )
 
@@ -279,7 +305,7 @@ class TotalSegmentationStage:
             totalsegmentator(
                 self.ct_nii_path,
                 self.total_ml_path,
-                ml=self.ml,  
+                ml=self.ml,
                 task="total",
                 roi_subset=plan["total_roi_subset"],
             )
@@ -290,8 +316,8 @@ class TotalSegmentationStage:
             totalsegmentator(
                 self.ct_nii_path,
                 self.head_glands_cavities_ml_path,
-                ml=self.ml, 
-                task="head_glands_cavities",
+                ml=self.ml,
+                task="head_glands_cavities",  
             )
 
         # Final existence checks (only what was requested)
@@ -303,6 +329,8 @@ class TotalSegmentationStage:
         if plan["run_head_glands_cavities"] and not head_done:
             raise FileNotFoundError(f"Head glands seg not found: {self.head_glands_cavities_ml_path}")
 
+        self._save_stage_metadata(plan)  
+
         # --- update context ---
         self.context.ct_nii_path = self.ct_nii_path
         self.context.body_ml_path = self.body_ml_path
@@ -311,5 +339,10 @@ class TotalSegmentationStage:
             self.head_glands_cavities_ml_path if plan["run_head_glands_cavities"] else None
         )
         self.context.totseg_plan = plan
+        self.context.extras["segmentation_stage"] = {  
+            "output_dir": self.output_dir,  
+            "work_dir": self.work_dir,  
+            "metadata_path": self.metadata_path,  
+        } 
 
         return self.context

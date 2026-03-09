@@ -24,17 +24,17 @@ Writes into:
   <phase_1_output>/synthetic_lesions_stage/  
 
 - Backup of unified seg BEFORE lesions:
-    <file_prefix>_pre_lesions.nii.gz  
+    work_dir/<file_prefix>_pre_lesions.nii.gz  
 - Global lesion masks:
-    <file_prefix>_all_lesions_binary.nii.gz   (uint8 0/1)  
-    <file_prefix>_all_lesions_labels.nii.gz   (uint8 0=bg, 1..K=lesion id across ALL ROIs)  
+    work_dir/<file_prefix>_all_lesions_binary.nii.gz   (uint8 0/1)  
+    work_dir/<file_prefix>_all_lesions_labels.nii.gz   (uint8 0=bg, 1..K=lesion id across ALL ROIs)  
 - Per-ROI outputs (for QC):
-    <roi>/<roi>_lesions_labels.nii.gz
-    <roi>/<roi>_lesions_binary.nii.gz
-    <roi>/<roi>_organ_minus_lesions.nii.gz
-    <roi>/<roi>_lesion_metadata.json
+    work_dir/<roi>/<roi>_lesions_labels.nii.gz  
+    work_dir/<roi>/<roi>_lesions_binary.nii.gz  
+    work_dir/<roi>/<roi>_organ_minus_lesions.nii.gz  
+    work_dir/<roi>/<roi>_lesion_metadata.json  
 - Stage metadata / debug:
-    work_dir/<file_prefix>_metadata.json  
+    work_dir/<file_prefix>_metadata.json
 
 Most important side-effect
 --------------------------
@@ -45,12 +45,12 @@ OVERWRITES `context.tdt_roi_seg_path` on disk so that:
 Expected Context interface
 --------------------------
 Incoming `context` must provide:
-- context.subdir_paths["phase_1"]  
-- context.config["phase_1"]["synthetic_lesions_stage"] with:  
-    - "file_prefix": str  
+- context.subdir_paths["phase_1"]
+- context.config["phase_1"]["synthetic_lesions_stage"] with:
+    - "file_prefix": str
     - "specs": dict | None
-- context.config["phase_1"]["segmentation_stage"]["roi_subset"]  
-- context.config["phase_1"]["unification_stage"]["label_map_path"]  
+- context.config["phase_1"]["segmentation_stage"]["roi_subset"]
+- context.config["phase_1"]["unification_stage"]["label_map_path"]
 - context.tdt_roi_seg_path: str (unified multilabel seg produced by TdtRoiUnifyStage)
 
 Maintainer / contact: pyazdi@bccrc.ca
@@ -96,29 +96,29 @@ class SyntheticLesionsStage:
     def __init__(self, context: Any) -> None:
         self.context = context
 
-        # Output base directory for this stage (under phase 1)  
-        self.phase_output_dir: str = context.subdir_paths["phase_1"]  
-        self.output_dir: str = os.path.join(self.phase_output_dir, "synthetic_lesions_stage")  
-        self.work_dir: str = os.path.join(self.output_dir, "work_dir")  
-        os.makedirs(self.output_dir, exist_ok=True)  
-        os.makedirs(self.work_dir, exist_ok=True)  
+        # Output base directory for this stage (under phase 1)
+        self.phase_output_dir: str = context.subdir_paths["phase_1"]
+        self.output_dir: str = os.path.join(self.phase_output_dir, "synthetic_lesions_stage")
+        self.work_dir: str = os.path.join(self.output_dir, "work_dir")
+        os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.work_dir, exist_ok=True)
 
         # Stage config block
-        self.cfg: Dict[str, Any] = context.config.get("phase_1", {}).get("synthetic_lesions_stage", {})  
-        self.prefix: str = str(self.cfg.get("file_prefix", "synthetic_lesions"))  
+        self.cfg: Dict[str, Any] = context.config.get("phase_1", {}).get("synthetic_lesions_stage", {})
+        self.prefix: str = str(self.cfg.get("file_prefix", "synthetic_lesions"))
         self.specs: Optional[Dict[str, Dict[str, Any]]] = self.cfg.get("specs", None)
 
         # Input unified segmentation path (multilabel) - will be overwritten on disk by this stage with lesions inserted
         self.tdt_roi_seg_path: Optional[str] = getattr(context, "tdt_roi_seg_path", None)
 
         # Keep ROI subset updated so downstream TAC can include synthetic_lesion if needed
-        roi_subset = self.context.config["phase_1"]["segmentation_stage"]["roi_subset"]  
+        roi_subset = self.context.config["phase_1"]["segmentation_stage"]["roi_subset"]
         if isinstance(roi_subset, str):
             roi_subset = [roi_subset]
         self.roi_subset: List[str] = [str(r).strip() for r in roi_subset if str(r).strip()]
 
         # Logger + tunables (stage-level)
-        self.logger = getattr(self.context, "_logger", logging.getLogger(__name__))  
+        self.logger = getattr(self.context, "_logger", logging.getLogger(__name__))
         self.default_seed: int = int(self.cfg.get("default_seed", 0))
 
         self.auto_shrink_factor: float = float(self.cfg.get("auto_shrink_factor", self.AUTO_SHRINK_FACTOR))
@@ -129,10 +129,10 @@ class SyntheticLesionsStage:
         )
 
         # Stage outputs directory
-        self.lesions_outdir = self.output_dir  
-        self.metadata_path = os.path.join(self.work_dir, f"{self.prefix}_metadata.json")  
+        self.lesions_outdir = self.work_dir  
+        self.metadata_path = os.path.join(self.work_dir, f"{self.prefix}_metadata.json")
 
-        # Load label map from configured phase 1 unification stage path  
+        # Load label map from configured phase 1 unification stage path
         self.tdt_name2id = self._load_tdt_label_map()
         if "synthetic_lesion" not in self.tdt_name2id:
             raise ValueError(
@@ -180,8 +180,8 @@ class SyntheticLesionsStage:
         nib.save(out, path)
 
     def _load_tdt_label_map(self) -> Dict[str, int]:
-        """Load TDT_Pipeline label map (name -> id) from configured label_map_path."""  
-        ts_map_path = self.context.config["phase_1"]["unification_stage"]["label_map_path"]  
+        """Load TDT_Pipeline label map (name -> id) from configured label_map_path."""
+        ts_map_path = self.context.config["phase_1"]["unification_stage"]["label_map_path"]
         if not os.path.exists(ts_map_path):
             raise FileNotFoundError(f"Class map json not found: {ts_map_path}")
 
@@ -196,7 +196,7 @@ class SyntheticLesionsStage:
         self.roi_subset = [str(r).strip() for r in self.roi_subset if str(r).strip()]
         if "synthetic_lesion" not in self.roi_subset:
             self.roi_subset.append("synthetic_lesion")
-            self.context.config["phase_1"]["segmentation_stage"]["roi_subset"] = self.roi_subset  
+            self.context.config["phase_1"]["segmentation_stage"]["roi_subset"] = self.roi_subset
 
     def _load_unified_seg(self) -> Tuple[nib.Nifti1Image, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -221,38 +221,38 @@ class SyntheticLesionsStage:
     def _write_backup_seg(self, seg_nii: nib.Nifti1Image, seg_xyz: np.ndarray) -> str:
         """Save a pre-lesion backup of the unified seg; returns path."""
         os.makedirs(self.lesions_outdir, exist_ok=True)
-        backup_path = os.path.join(self.lesions_outdir, f"{self.prefix}_pre_lesions.nii.gz")  
+        backup_path = os.path.join(self.lesions_outdir, f"{self.prefix}_pre_lesions.nii.gz")
         # Use uint8 to avoid truncating larger label IDs
         self._save_nifti(backup_path, seg_xyz, seg_nii, dtype=np.uint8)
         return backup_path
 
-    def _save_stage_metadata(  
-        self,  
-        results: Dict[str, Any],  
-        backup_path: str,  
-        global_bin_path: str,  
-        global_lbl_path: str,  
-    ) -> None:  
-        """Save stage-specific metadata for debugging / provenance."""  
-        metadata = {  
-            "stage": "synthetic_lesions_stage",  
-            "output_dir": self.output_dir,  
-            "work_dir": self.work_dir,  
-            "file_prefix": self.prefix,  
-            "tdt_roi_seg_path": self.tdt_roi_seg_path,  
-            "synthetic_lesion_id": int(self.synthetic_lesion_id),  
-            "default_seed": int(self.default_seed),  
-            "auto_shrink_factor": float(self.auto_shrink_factor),  
-            "auto_max_shrink_iters": int(self.auto_max_shrink_iters),  
-            "auto_start_frac": float(self.auto_start_frac),  
-            "max_lesion_placement_attempts": int(self.max_lesion_placement_attempts),  
-            "backup_seg_path": backup_path,  
-            "global_binary_path": global_bin_path,  
-            "global_labels_path": global_lbl_path,  
-            "results_summary": list(results.keys()),  
-        }  
-        with open(self.metadata_path, "w", encoding="utf-8") as f:  
-            json.dump(metadata, f, indent=2)  
+    def _save_stage_metadata(
+        self,
+        results: Dict[str, Any],
+        backup_path: str,
+        global_bin_path: str,
+        global_lbl_path: str,
+    ) -> None:
+        """Save stage-specific metadata for debugging / provenance."""
+        metadata = {
+            "stage": "synthetic_lesions_stage",
+            "output_dir": self.output_dir,
+            "work_dir": self.work_dir,
+            "file_prefix": self.prefix,
+            "tdt_roi_seg_path": self.tdt_roi_seg_path,
+            "synthetic_lesion_id": int(self.synthetic_lesion_id),
+            "default_seed": int(self.default_seed),
+            "auto_shrink_factor": float(self.auto_shrink_factor),
+            "auto_max_shrink_iters": int(self.auto_max_shrink_iters),
+            "auto_start_frac": float(self.auto_start_frac),
+            "max_lesion_placement_attempts": int(self.max_lesion_placement_attempts),
+            "backup_seg_path": backup_path,
+            "global_binary_path": global_bin_path,
+            "global_labels_path": global_lbl_path,
+            "results_summary": list(results.keys()),
+        }
+        with open(self.metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
 
     # -------------------------------------------------------------------------
     # Geometry + sampling helpers
@@ -867,8 +867,8 @@ class SyntheticLesionsStage:
         global_lesion_labels_zyx: np.ndarray,
     ) -> Tuple[str, str]:
         """Save global lesion binary + label volumes; returns (binary_path, labels_path)."""
-        global_bin_path = os.path.join(self.lesions_outdir, f"{self.prefix}_all_lesions_binary.nii.gz")  
-        global_lbl_path = os.path.join(self.lesions_outdir, f"{self.prefix}_all_lesions_labels.nii.gz")  
+        global_bin_path = os.path.join(self.lesions_outdir, f"{self.prefix}_all_lesions_binary.nii.gz")
+        global_lbl_path = os.path.join(self.lesions_outdir, f"{self.prefix}_all_lesions_labels.nii.gz")
 
         self._save_nifti(global_bin_path, self._zyx_to_xyz(global_lesion_binary_zyx), seg_nii, dtype=np.uint8)
         self._save_nifti(global_lbl_path, self._zyx_to_xyz(global_lesion_labels_zyx), seg_nii, dtype=np.uint8)
@@ -912,11 +912,11 @@ class SyntheticLesionsStage:
             self.logger.info("No synthetic lesion specs provided; skipping lesion generation.")
             self.context.synthetic_lesions_outdir = None
             self.context.synthetic_lesions_results = {}
-            self.context.extras["synthetic_lesions_stage"] = {  
-                "output_dir": None,  
-                "work_dir": None,  
-                "metadata_path": None,  
-            }  
+            self.context.extras["synthetic_lesions_stage"] = {
+                "output_dir": None,
+                "work_dir": None,
+                "metadata_path": None,
+            }
             return self.context
 
         os.makedirs(self.lesions_outdir, exist_ok=True)
@@ -968,7 +968,7 @@ class SyntheticLesionsStage:
             global_lesion_binary_zyx=global_lesion_binary_zyx,
         )
 
-        self._save_stage_metadata(results, backup_path, global_bin_path, global_lbl_path)  
+        self._save_stage_metadata(results, backup_path, global_bin_path, global_lbl_path)
 
         # Update context for downstream stages
         self.context.synthetic_lesions_outdir = self.lesions_outdir
@@ -977,10 +977,10 @@ class SyntheticLesionsStage:
         self.context.synthetic_lesions_global_binary_path = global_bin_path
         self.context.synthetic_lesions_global_labels_path = global_lbl_path
         self.context.tdt_roi_seg_path = self.tdt_roi_seg_path
-        self.context.extras["synthetic_lesions_stage"] = {  
-            "output_dir": self.output_dir,  
-            "work_dir": self.work_dir,  
-            "metadata_path": self.metadata_path,  
-        }  
+        self.context.extras["synthetic_lesions_stage"] = {
+            "output_dir": self.output_dir,
+            "work_dir": self.work_dir,
+            "metadata_path": self.metadata_path,
+        }
 
         return self.context

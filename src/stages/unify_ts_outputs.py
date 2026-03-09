@@ -74,6 +74,7 @@ class TdtRoiUnifyStage:
     """  
 
     def __init__(self, context: Any) -> None:  
+        context.require("subdir_paths", "config", "ct_nii_path", "body_ml_path", "totseg_plan")  
         self.context = context
 
         self.phase_output_dir: str = context.subdir_paths["phase_1"]  

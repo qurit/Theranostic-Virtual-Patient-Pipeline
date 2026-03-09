@@ -34,6 +34,7 @@ class Context:
         self.subdir_paths: Optional[Dict[str, str]] = None
         self.subdir_names: Optional[Dict[str, str]] = None  
         self.synthetic_lesions_enabled: Optional[bool] = None  
+        self.downstream_roi_subset: Optional[list[str]] = None  
 
         # Config fields (snapshots / sections)
         self.config: Dict[str, Any] = {}  # entire config dict for stages to access as needed

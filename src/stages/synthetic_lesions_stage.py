@@ -94,6 +94,7 @@ class SyntheticLesionsStage:
     _EPS_RADIUS_VOX_FRAC: float = 0.50  # radius floor ~0.5 * min_voxel_size (epsilon radius vox fraction)
 
     def __init__(self, context: Any) -> None:
+        context.require("subdir_paths", "config", "tdt_roi_seg_path")  
         self.context = context
 
         # Output base directory for this stage (under phase 1)
@@ -112,7 +113,9 @@ class SyntheticLesionsStage:
         self.tdt_roi_seg_path: Optional[str] = getattr(context, "tdt_roi_seg_path", None)
 
         # Keep ROI subset updated so downstream TAC can include synthetic_lesion if needed
-        roi_subset = self.context.config["phase_1"]["segmentation_stage"]["roi_subset"]
+        roi_subset = getattr(self.context, "downstream_roi_subset", None)  
+        if roi_subset is None:  
+            roi_subset = self.context.config["phase_1"]["segmentation_stage"]["roi_subset"]  
         if isinstance(roi_subset, str):
             roi_subset = [roi_subset]
         self.roi_subset: List[str] = [str(r).strip() for r in roi_subset if str(r).strip()]
@@ -196,7 +199,7 @@ class SyntheticLesionsStage:
         self.roi_subset = [str(r).strip() for r in self.roi_subset if str(r).strip()]
         if "synthetic_lesion" not in self.roi_subset:
             self.roi_subset.append("synthetic_lesion")
-            self.context.config["phase_1"]["segmentation_stage"]["roi_subset"] = self.roi_subset
+        self.context.downstream_roi_subset = list(self.roi_subset)  
 
     def _load_unified_seg(self) -> Tuple[nib.Nifti1Image, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -538,7 +541,7 @@ class SyntheticLesionsStage:
         Lesions are clipped to organ mask.
         """
         Z, Y, X = mask_zyx.shape
-        labels = np.zeros((Z, Y, X), dtype=np.uint8)
+        labels = np.zeros((Z, Y, X), dtype=np.uint16)  
 
         for lbl, (c, r) in enumerate(zip(centers_zyx, radii_mm), start=1):
             z0, y0, x0 = c # centre in zyx order
@@ -561,7 +564,7 @@ class SyntheticLesionsStage:
             sphere = (dx * dx + dy * dy + dz * dz) <= (r * r) # boolean mask of the sphere in the local bounding box
             sphere &= mask_zyx[zmin:zmax, ymin:ymax, xmin:xmax]
 
-            labels[zmin:zmax, ymin:ymax, xmin:xmax][sphere] = np.uint8(lbl)
+            labels[zmin:zmax, ymin:ymax, xmin:xmax][sphere] = np.uint16(lbl)  
 
         return labels
 
@@ -733,7 +736,7 @@ class SyntheticLesionsStage:
         bin_path = os.path.join(roi_dir, f"{roi_name}_lesions_binary.nii.gz")
         minus_path = os.path.join(roi_dir, f"{roi_name}_organ_minus_lesions.nii.gz")
 
-        self._save_nifti(labels_path, self._zyx_to_xyz(roi_lesion_labels_zyx), seg_nii, dtype=np.uint8)
+        self._save_nifti(labels_path, self._zyx_to_xyz(roi_lesion_labels_zyx), seg_nii, dtype=np.uint16)  
         self._save_nifti(bin_path, self._zyx_to_xyz(roi_lesion_binary_zyx), seg_nii, dtype=np.uint8)
         self._save_nifti(minus_path, self._zyx_to_xyz(roi_organ_minus_lesions_zyx), seg_nii, dtype=np.uint8)
 
@@ -825,7 +828,7 @@ class SyntheticLesionsStage:
         if roi_max > 0:
             offset = int(global_next_id) - 1
             m = roi_lesion_labels_zyx > 0
-            global_lesion_labels_zyx[m] = (roi_lesion_labels_zyx[m].astype(np.uint8) + offset).astype(np.uint8)
+            global_lesion_labels_zyx[m] = (roi_lesion_labels_zyx[m].astype(np.uint16) + offset).astype(np.uint16)  
             global_next_id += roi_max
 
         # Save per-ROI outputs
@@ -871,7 +874,7 @@ class SyntheticLesionsStage:
         global_lbl_path = os.path.join(self.lesions_outdir, f"{self.prefix}_all_lesions_labels.nii.gz")
 
         self._save_nifti(global_bin_path, self._zyx_to_xyz(global_lesion_binary_zyx), seg_nii, dtype=np.uint8)
-        self._save_nifti(global_lbl_path, self._zyx_to_xyz(global_lesion_labels_zyx), seg_nii, dtype=np.uint8)
+        self._save_nifti(global_lbl_path, self._zyx_to_xyz(global_lesion_labels_zyx), seg_nii, dtype=np.uint16)  
 
         return global_bin_path, global_lbl_path
 
@@ -928,7 +931,7 @@ class SyntheticLesionsStage:
 
         # Global accumulators (zyx)
         global_lesion_binary_zyx = np.zeros(seg_zyx.shape, dtype=np.uint8)
-        global_lesion_labels_zyx = np.zeros(seg_zyx.shape, dtype=np.uint8)
+        global_lesion_labels_zyx = np.zeros(seg_zyx.shape, dtype=np.uint16)  
         global_next_id = 1
 
         results: Dict[str, Any] = {}

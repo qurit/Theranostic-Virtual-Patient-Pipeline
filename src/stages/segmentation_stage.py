@@ -107,6 +107,7 @@ class TotalSegmentationStage:
     """
 
     def __init__(self, context: Any) -> None:
+        context.require("ct_input_path", "config", "subdir_paths")  
         self.context = context
 
         self.ct_input_path: str = context.ct_input_path

@@ -104,6 +104,7 @@ class TdtPipeline:
         self.ct_input_type: CTInputType = "dicom"  # default, will be set properly in _config_setup() after validation
         self.run_synthetic_lesions: bool = False
         self.synthetic_lesions_disabled_reason: str | None = None
+        self.sub_dir_names: Dict[str, str] = {}  
 
         self.logger: logging.Logger = logging.getLogger(f"TDT_CONFIG_LOGGER_CT_{self.ct_indx}")
         self.logger.setLevel(logging.DEBUG if self.mode == "DEBUG" else logging.INFO)
@@ -219,10 +220,12 @@ class TdtPipeline:
         # Create phase subdirs
         phases = ["phase_1", "phase_2", "phase_3"]  
         self.sub_dir_paths = {}
+        self.sub_dir_names = {}  
         for phase in phases:
             sub_dir_path = os.path.join(self.output_folder_path, self.config[phase]["sub_dir_name"])
             os.makedirs(sub_dir_path, exist_ok=True)
             self.sub_dir_paths[phase] = sub_dir_path
+            self.sub_dir_names[phase] = self.config[phase]["sub_dir_name"]  
 
     def _context_setup(self) -> None:
         """
@@ -238,7 +241,7 @@ class TdtPipeline:
 
         context.config = copy.deepcopy(self.config)
         context.subdir_paths = copy.deepcopy(self.sub_dir_paths)
-        context.subdir_names = copy.deepcopy(self.sub_dir_paths)
+        context.subdir_names = copy.deepcopy(self.sub_dir_names)  
 
         # Initial setup for Context (runtime)
         context.mode = self.mode
@@ -247,6 +250,11 @@ class TdtPipeline:
         context.ct_indx = self.ct_indx
         context.output_folder_path = self.output_folder_path
         context.synthetic_lesions_enabled = self.run_synthetic_lesions
+
+        roi_subset = self.config["phase_1"]["segmentation_stage"]["roi_subset"]  
+        if isinstance(roi_subset, str):  
+            roi_subset = [roi_subset]  
+        context.downstream_roi_subset = [str(r).strip() for r in roi_subset if str(r).strip()]  
 
         self.logger.debug("Context initialized for CT_%s", self.ct_indx)
 

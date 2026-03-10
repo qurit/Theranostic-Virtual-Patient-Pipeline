@@ -1,0 +1,480 @@
+"""
+SIMIND Simulation Stage for the TDT pipeline.  
+
+This stage runs SIMIND to produce per-organ SPECT projection totals (energy windows) using:
+- An attenuation map binary produced by preprocessing (`context.atn_av_path`)
+- Per-organ binary ROI source maps produced by preprocessing (`context.binary_roi_act_map_paths`)
+- SIMIND template files copied into a working directory (`.win`, `.smc`)
+
+High-level workflow
+-------------------
+1) Validate required context fields (labels, spacing, files).
+2) Configure SIMIND environment variables (SMC_DIR, PATH).
+3) Copy SIMIND template files into a per-CT work directory.
+4) For each ROI/organ:
+   - Run SIMIND in parallel over `num_cores` by using `/rr:<core_id>` random seeds.
+   - Aggregate per-core totals into a single per-organ totals file per energy window.
+5) Run a Jaszczak-based calibration (if not already present) to produce `calib.res`.
+
+Expected Context interface
+--------------------------
+Incoming `context` is expected to provide:
+- context.config["phase_2"]["simind_stage"] : dict
+- context.subdir_paths["phase_2"] : str
+- context.mode : str ("DEBUG" or "PRODUCTION")
+- context.require(...) method (used for required-field checks)
+- context.extras : dict (optional metadata storage)
+
+And the following fields from earlier stages:
+- context.class_seg : dict[str, int] (roi_name -> label_id)
+- context.arr_shape_new : tuple[int, int, int] (z,y,x)
+- context.arr_px_spacing_cm : tuple[float, float, float] (z,y,x spacing in cm)
+- context.binary_roi_act_map_paths : dict[str, str] ({roi_name: path to binary source map})
+- context.atn_av_path : str (attenuation binary)
+
+On success, this stage sets:
+- context.spect_sim_output_dir : str
+- context.simind_projection_paths : dict[str, dict[str, str]]
+- context.extras["simind_output_dir"], ["simind_work_dir"], ["simind_num_cores"], ["simind_metadata_path"]
+
+Maintainer / contact: pyazdi@bccrc.ca  
+"""
+
+from __future__ import annotations
+
+import os
+import json
+import shutil
+import subprocess
+from typing import Any, Dict, List  
+
+import numpy as np
+
+
+class SimindSimulationStage:
+    """
+    Run SIMIND simulations (per-organ, parallel cores) and save per-organ totals.
+
+    Parameters
+    ----------
+    context : Context-like
+        Pipeline context containing config and preprocessing outputs.
+    """
+
+    def __init__(self, context: Any) -> None:
+        self.context = context
+        self.config: Dict[str, Any] = context.config
+
+        # Repository root is assumed to be two levels above this stage file.
+        self.repo_root: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+        self.phase_output_dir: str = context.subdir_paths["phase_2"]
+        self.stage_cfg: Dict[str, Any] = context.config["phase_2"]["simind_stage"]
+        self.output_dir: str = os.path.join(
+            self.phase_output_dir,
+            self.stage_cfg.get("sub_dir_name", "simind_simulation"),
+        )
+        os.makedirs(self.output_dir, exist_ok=True)
+
+        # Work directory where SIMIND templates and input binaries are placed.
+        self.work_dir: str = os.path.join(self.output_dir, "work_dir")
+        os.makedirs(self.work_dir, exist_ok=True)
+
+        self.metadata_path: str = os.path.join(self.work_dir, "simind_metadata.json")
+
+        self.prefix: str = self.stage_cfg["file_prefix"]
+
+        self.mode: str = self.context.mode
+
+        # SIMIND configuration
+        self.collimator: str = self.stage_cfg["Collimator"]
+        self.isotope: str = self.stage_cfg["Isotope"]
+        self.num_projections: int = self.stage_cfg["NumProjections"]
+        self.detector_distance: float = self.stage_cfg["DetectorDistance"]
+        self.output_img_size: int = self.stage_cfg["OutputImgSize"]
+        self.output_pixel_width: float = self.stage_cfg["OutputPixelWidth"]
+        self.output_slice_width: float = self.stage_cfg["OutputSliceWidth"]
+        self.num_photons: float = self.stage_cfg["NumPhotons"]
+        self.simind_dir: str = self.stage_cfg["SIMINDDirectory"]
+        self.energy_window_width: float = self.stage_cfg["EnergyWindowWidth"]
+        self.detector_width: float = self.stage_cfg["DetectorWidth"]
+        self.detector_length: float = self.stage_cfg["DetectorLength"]
+
+        # CPU configuration (validated)
+        num_cores = self.stage_cfg["NumCores"]
+        max_cores = os.cpu_count() or 1
+        if isinstance(num_cores, bool) or not isinstance(num_cores, int) or num_cores < 0 or num_cores > max_cores:  
+            self.num_cores = max_cores
+        elif num_cores == 0:  # use all available cores
+            self.num_cores = max_cores
+        else:  # use specified number of cores (up to max_cores)
+            self.num_cores = num_cores
+
+        # SIMIND executable
+        simind_exe = os.path.join(self.simind_dir, "simind")
+        if not os.path.exists(simind_exe) and os.path.exists(simind_exe + ".exe"):
+            simind_exe = simind_exe + ".exe"
+        self.simind_exe: str = simind_exe
+
+        if not os.path.exists(self.simind_exe):
+            raise FileNotFoundError(f"SIMIND executable not found: {self.simind_exe}")
+
+    def _set_simind_environment(self) -> None:
+        """
+        Configure environment variables used by SIMIND.
+
+        Sets:
+        - SMC_DIR: where SIMIND expects its `smc_dir` resources
+        - PATH: ensures the SIMIND executable directory is discoverable
+        """
+        smc_dir = os.path.join(self.simind_dir, "smc_dir")
+
+        if not os.path.isdir(smc_dir):
+            raise FileNotFoundError(f"SMC_DIR folder not found: {smc_dir}")
+
+        # SIMIND expects SMC_DIR to end with / (or \ on Windows)
+        if not smc_dir.endswith(os.sep):
+            smc_dir += os.sep
+
+        os.environ["SMC_DIR"] = smc_dir
+        os.environ["PATH"] = self.simind_dir + os.pathsep + os.environ.get("PATH", "")
+
+    def _copy_templates(self) -> None:
+        """
+        Copy SIMIND template files into the work directory.
+
+        Required templates in <repo_root>/data:
+        - scattwin.win  -> renamed to <prefix>.win
+        - smc.smc       -> renamed to <prefix>.smc
+        """
+        scatwin_file = os.path.join(self.repo_root, "data", "scattwin.win")
+        shutil.copyfile(scatwin_file, os.path.join(self.work_dir, f"{self.prefix}.win"))
+
+        smc_file = os.path.join(self.repo_root, "data", "smc.smc")
+        shutil.copyfile(smc_file, os.path.join(self.work_dir, f"{self.prefix}.smc"))
+
+    def _get_projection_paths_for_organ(self, organ_name: str) -> Dict[str, str]:  
+        """
+        Return output projection paths for a single organ.
+        """
+        return {  
+            "w1": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w1.a00"),  
+            "w2": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w2.a00"),  
+            "w3": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w3.a00"),  
+        }
+
+    def _build_projection_path_dict(self, roi_list: List[str]) -> Dict[str, Dict[str, str]]:  
+        """
+        Return output projection paths for all organs.
+        """
+        return {organ_name: self._get_projection_paths_for_organ(organ_name) for organ_name in roi_list}  
+
+    def _organ_totals_exist(self, organ_name: str) -> bool:
+        """
+        Check if aggregated per-organ totals exist in the output directory.
+
+        Returns True if all three energy window totals exist for this organ.
+        """
+        organ_paths = self._get_projection_paths_for_organ(organ_name)  
+        return all(os.path.exists(path) for path in organ_paths.values())  
+
+    def _calibration_exists(self) -> bool:
+        """Return True if `calib.res` exists in the output directory."""
+        return os.path.exists(os.path.join(self.output_dir, "calib.res"))
+
+    def _run_jaszczak_calibration(self) -> None:
+        """
+        Run the Jaszczak calibration in SIMIND to produce `calib.res`.
+
+        Notes
+        -----
+        - If `calib.res` already exists, this is a no-op.
+        - Requires `jaszak.smc` to exist in <repo_root>/data.
+        """
+        if self._calibration_exists():
+            return
+
+        jaszak_file = os.path.join(self.repo_root, "data", "jaszak.smc")
+        shutil.copyfile(jaszak_file, os.path.join(self.output_dir, "jaszak.smc"))
+
+        cmd = (
+            f"{self.simind_exe} jaszak calib"
+            f"/fi:{self.isotope}"
+            f"/cc:{self.collimator}"
+            f"/29:1"
+            f"/15:5"
+            f"/fa:11"
+            f"/fa:15"
+            f"/fa:14"
+        )
+        subprocess.run(cmd, shell=True, cwd=self.output_dir, stdout=subprocess.DEVNULL)
+
+    def _get_input_geometry(self, arr_shape: tuple[int, int, int], arr_px_spacing_cm: tuple[float, float, float]) -> Dict[str, float]:  
+        """
+        Derive SIMIND input / output geometry values from preprocessing outputs.
+        """
+        input_slice_width = arr_px_spacing_cm[0]  
+        input_pixel_width = arr_px_spacing_cm[1]  
+        input_half_length = input_slice_width * arr_shape[0] / 2.0  
+
+        output_img_length = input_slice_width * arr_shape[0] / self.output_slice_width  
+
+        detector_width_cm = self.detector_width  
+        if self.detector_length == 0:  
+            detector_length_cm = arr_shape[0] * input_slice_width  
+        else:  
+            detector_length_cm = self.detector_length  
+
+        return {  
+            "input_slice_width": input_slice_width,  
+            "input_pixel_width": input_pixel_width,  
+            "input_half_length": input_half_length,  
+            "output_img_length": output_img_length,  
+            "detector_width_cm": detector_width_cm,  
+            "detector_length_cm": detector_length_cm,  
+        }
+
+    def _build_simind_switches(  
+        self,
+        atn_name: str,
+        act_name: str,
+        arr_shape: tuple[int, int, int],
+        geometry: Dict[str, float],
+        scale_factor: float,
+    ) -> str:
+        """
+        Build SIMIND switch string for a single organ simulation.
+
+        Current modifable SIMIND switches include:
+        - /fd: (attenuation map filename)
+        - /fs: (activity map filename)
+        - /nn: (number of photons, scaled by num_cores)
+        - /cc: (collimator)
+        - /fi: (isotope)
+        - /02, /05: (input half length)
+        - /08, /10: (detector length and width)
+        - /14, /15: (energy window lower bounds)
+        - /20, /21: (energy window upper bounds)
+        - /28: (output pixel width)
+        - /29: (number of projections)
+        - /31: (input pixel width)
+        - /34: (input z pixels)
+        - /42: (detector distance)
+        - /76: (output image size)
+        - /77: (output image length)
+        - /78, /79: (output z pixels, output x pixels)
+        """
+        simind_switches = (  
+            f"/fd:{atn_name}"
+            f"/fs:{act_name}"
+            f"/in:x22,3x"
+            f"/nn:{scale_factor}"  
+            f"/cc:{self.collimator}"
+            f"/fi:{self.isotope}"
+            f"/02:{geometry['input_half_length']}"
+            f"/05:{geometry['input_half_length']}"
+            f"/08:{geometry['detector_length_cm']:.2f}"
+            f"/10:{geometry['detector_width_cm']:.2f}"
+            f"/14:-7"
+            f"/15:-7"
+            f"/20:{-1*self.energy_window_width}"
+            f"/21:{-1*self.energy_window_width}"
+            f"/28:{self.output_pixel_width}"
+            f"/29:{self.num_projections}"
+            f"/31:{geometry['input_pixel_width']}"
+            f"/34:{arr_shape[0]}"
+            f"/42:{self.detector_distance}"
+            f"/76:{self.output_img_size}"
+            f"/77:{geometry['output_img_length']}"
+            f"/78:{arr_shape[1]}"
+            f"/79:{arr_shape[2]}"
+        )
+        return simind_switches  
+
+    def _aggregate_core_totals_for_organ(self, organ_name: str) -> None:
+        """
+        Aggregate totals across `num_cores` SIMIND runs for a given organ.
+
+        Reads per-core files written in work_dir:
+          <prefix>_<organ>_<j>_tot_w{1,2,3}.a00
+
+        Writes averaged totals to output_dir:
+          <prefix>_<organ>_tot_w{1,2,3}.a00
+
+        If mode == "PRODUCTION", per-core files are deleted to save space.
+        """
+        xtot_w1 = 0
+        xtot_w2 = 0
+        xtot_w3 = 0
+
+        for j in range(self.num_cores):
+            p1 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w1.a00")
+            p2 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w2.a00")
+            p3 = os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_{j}_tot_w3.a00")
+
+            w1 = np.fromfile(p1, dtype=np.float32)
+            w2 = np.fromfile(p2, dtype=np.float32)
+            w3 = np.fromfile(p3, dtype=np.float32)
+
+            xtot_w1 += w1
+            xtot_w2 += w2
+            xtot_w3 += w3
+
+            if self.mode == "PRODUCTION":
+                for p in (p1, p2, p3):
+                    try:
+                        os.remove(p)
+                    except FileNotFoundError:
+                        pass
+
+        # Average across cores , units of counts/mb/s
+        xtot_w1 /= self.num_cores
+        xtot_w2 /= self.num_cores
+        xtot_w3 /= self.num_cores
+
+        organ_paths = self._get_projection_paths_for_organ(organ_name)  
+
+        # save
+        np.asarray(xtot_w1, dtype=np.float32).tofile(organ_paths["w1"])  
+        np.asarray(xtot_w2, dtype=np.float32).tofile(organ_paths["w2"])  
+        np.asarray(xtot_w3, dtype=np.float32).tofile(organ_paths["w3"])  
+
+    def _run_simind_for_organ_cores(self, organ_name: str, simind_switches: str) -> None:
+        """
+        Run SIMIND for a single organ across multiple cores (parallel processes).
+
+        Parameters
+        ----------
+        organ_name : str
+            ROI name used in output filenames.
+        simind_switches : str
+            SIMIND switch string (e.g., "/fd:.../fs:.../nn:...").
+        """
+        processes: List[subprocess.Popen] = []
+        for j in range(self.num_cores):
+            cmd = f"{self.simind_exe} {self.prefix} {self.prefix}_{organ_name}_{j} " + simind_switches + f"/rr:{j}"
+            if j == 0:
+                p = subprocess.Popen(cmd, shell=True, cwd=self.work_dir)
+            else:
+                p = subprocess.Popen(cmd, shell=True, cwd=self.work_dir, stdout=subprocess.DEVNULL)
+            processes.append(p)
+
+        for p in processes:
+            p.wait()
+
+    def _organ_headers_exist(self, organ_name: str) -> bool:
+        """
+        check that SIMIND header outputs exist for an organ (core 0).
+
+        This stage checks for:
+          <work_dir>/<prefix>_<organ>_0_tot_w2.h00
+        """
+        return os.path.exists(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_0_tot_w2.h00"))
+
+    def _save_stage_metadata(self, simind_projection_paths: Dict[str, Dict[str, str]]) -> None:
+        """Save stage-specific metadata for debugging / provenance."""
+        metadata: Dict[str, Any] = {
+            "stage": "simind_stage",
+            "phase_output_dir": self.phase_output_dir,
+            "output_dir": self.output_dir,
+            "work_dir": self.work_dir,
+            "file_prefix": self.prefix,
+            "simind_exe": self.simind_exe,
+            "simind_dir": self.simind_dir,
+            "collimator": self.collimator,
+            "isotope": self.isotope,
+            "num_projections": self.num_projections,
+            "num_photons": self.num_photons,
+            "detector_distance": self.detector_distance,
+            "detector_width": self.detector_width,
+            "detector_length": self.detector_length,
+            "output_img_size": self.output_img_size,
+            "output_pixel_width": self.output_pixel_width,
+            "output_slice_width": self.output_slice_width,
+            "energy_window_width": self.energy_window_width,
+            "num_cores": self.num_cores,
+            "simind_projection_paths": simind_projection_paths,
+        }
+        with open(self.metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=4)
+
+    def run(self) -> Any:
+        """
+        Execute SIMIND simulation for all organs and save per-organ totals.
+
+        Returns
+        -------
+        context : Context-like
+            Updated context object.
+        """
+        self.context.require(
+            "class_seg",
+            "arr_shape_new",
+            "arr_px_spacing_cm",
+            "binary_roi_act_map_paths",
+            "atn_av_path",
+        )
+
+        class_seg = self.context.class_seg
+        arr_shape = self.context.arr_shape_new
+        arr_px_spacing_cm = self.context.arr_px_spacing_cm
+        organ_act_paths = self.context.binary_roi_act_map_paths
+        atn_av_path = self.context.atn_av_path
+
+        if not os.path.exists(atn_av_path):
+            raise FileNotFoundError(f"Attenuation map not found: {atn_av_path}")
+
+        roi_list = [roi_name for roi_name in class_seg.keys() if roi_name in organ_act_paths]
+        if not roi_list:
+            raise ValueError("No ROI binary source maps found for SIMIND simulation.")
+
+        simind_projection_paths = self._build_projection_path_dict(roi_list)  
+        geometry = self._get_input_geometry(arr_shape, arr_px_spacing_cm)  
+
+        self._set_simind_environment()
+        self._copy_templates()
+
+        # Ensure attenuation map is present in work_dir (SIMIND reads inputs from cwd)
+        atn_name = os.path.basename(atn_av_path)
+        atn_work_path = os.path.join(self.work_dir, atn_name)
+        if not os.path.exists(atn_work_path):
+            shutil.copyfile(atn_av_path, atn_work_path)
+
+        for organ_name in roi_list:
+            act_path = organ_act_paths[organ_name]
+
+            if self._organ_totals_exist(organ_name) and self._organ_headers_exist(organ_name):
+                continue
+            if not os.path.exists(act_path):
+                raise FileNotFoundError(f"Binary ROI source map not found: {act_path}")
+
+            scale_factor = self.num_photons / self.num_cores  # changed - need to fix
+
+            act_name = os.path.basename(act_path)
+            shutil.copyfile(act_path, os.path.join(self.work_dir, act_name))
+
+            simind_switches = self._build_simind_switches(  
+                atn_name=atn_name,  
+                act_name=act_name,  
+                arr_shape=arr_shape,  
+                geometry=geometry,  
+                scale_factor=scale_factor,  
+            )
+
+            self._run_simind_for_organ_cores(organ_name, simind_switches)
+            self._aggregate_core_totals_for_organ(organ_name)
+
+        self._run_jaszczak_calibration()
+
+        self._save_stage_metadata(simind_projection_paths)
+
+        self.context.spect_sim_output_dir = self.output_dir
+        self.context.simind_projection_paths = simind_projection_paths
+
+        # Optional metadata for debugging
+        self.context.extras["simind_output_dir"] = self.output_dir
+        self.context.extras["simind_work_dir"] = self.work_dir
+        self.context.extras["simind_num_cores"] = self.num_cores
+        self.context.extras["simind_metadata_path"] = self.metadata_path
+
+        return self.context

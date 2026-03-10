@@ -32,11 +32,11 @@ from typing import Any, Dict, Literal
 # -----------------------------
 from src.io.context import Context
 
-from src.stages.segmentation_stage import TotalSegmentationStage
-from src.stages.unify_ts_outputs import TdtRoiUnifyStage
-from src.stages.preprocessing_stage import SimindPreprocessStage
+from stages.segmentation_ts_stage import TotalSegmentationStage
+from stages.unify_seg_tdt_outputs import TdtRoiUnifyStage
+from stages.preprocessing_simind_stage import SimindPreprocessStage
 from src.stages.synthetic_lesions_stage import SyntheticLesionsStage
-from src.stages.simind_stage import SimindSimulationStage
+from stages.simind_simulation_stage import SimindSimulationStage
 from src.stages.pbpk_stage import PbpkStage
 from src.stages.reconstruction_stage import SpectReconstructionStage
 

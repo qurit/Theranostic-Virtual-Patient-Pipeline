@@ -295,6 +295,7 @@ class TdtPipeline:
         logger.info("CT input | path=%s | type=%s", self.ct_input, self.ct_input_type)
 
         # -----------------------------  Creating Digital Twin -----------------------------
+        print("-----------------------------Phase 1: Creating Digital Twin-----------------------------")
         # -----------------------------
         # Stage 1.1: Segmentation of CT stage via total segmentator
         # -----------------------------
@@ -352,6 +353,7 @@ class TdtPipeline:
         
 
         # -----------------------------  SPECT simulation (via SIMIND) -----------------------------  
+        print("-----------------------------Phase 2: SPECT Simulation-----------------------------")
         # -----------------------------
         # Stage 2.1: Preprocess for SIMIND (generate SIMIND input files)
         # -----------------------------
@@ -390,8 +392,8 @@ class TdtPipeline:
         print("SIMIND Simulation Stage completed.")
         logger.info("Stage end: SIMIND Simulation | elapsed=%.2fs", time.perf_counter() - t_stage)
 
-        quit()
         # -----------------------------  SPECT post-processing -----------------------------
+        print("-----------------------------Phase 3: SPECT Post-Processing-----------------------------")
         # -----------------------------
         # Stage 3.1: PBPK TACs created and applied to projections
         # -----------------------------
@@ -406,7 +408,7 @@ class TdtPipeline:
 
         print("PBPK Stage completed.")
         logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)
-
+        quit()
         # -----------------------------
         # Stage 3.2: SPECT Reconstruction (ie. OSEM + TEW scatter)
         # -----------------------------
@@ -495,8 +497,10 @@ def main() -> int:
 
     # Filter hidden files/directories and keep deterministic ordering for repeatability
     items = [n for n in sorted(os.listdir(ct_inputs_dir)) if not n.startswith(".")]
-
+    print("----------------------------- Starting TDT Pipeline -----------------------------")
+    print("")
     print(f"Discovered {len(items)} CT item(s) in: {ct_inputs_dir}")
+    print("")
 
     for idx, name in enumerate(items):
         ct_path = os.path.join(ct_inputs_dir, name)

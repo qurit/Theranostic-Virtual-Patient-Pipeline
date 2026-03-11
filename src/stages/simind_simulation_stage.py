@@ -33,11 +33,18 @@ And the following fields from earlier stages:
 - context.mask_roi_body : dict[int, np.ndarray] (label_id -> boolean mask)  
 - context.atn_av_path : str (attenuation binary)
 
-On success, this stage sets:
-- context.spect_sim_output_dir : str
+On success, this stage sets:  
+- context.spect_sim_output_dir : str  
+- context.simind_stage_output_dir : str  
+- context.simind_work_dir : str  
+- context.simind_metadata_path : str  
+- context.simind_calibration_path : str  
 - context.simind_projection_paths : dict[str, dict[str, str]]
-- context.extras["simind_output_dir"], ["simind_work_dir"], ["simind_num_cores"], ["simind_metadata_path"]
-- context.extras["simind_geometry"], ["simind_scale_factor"], ["simind_total_num_voxels"], ["simind_switches_by_organ"]  
+- context.simind_num_cores : int  
+- context.simind_geometry : dict[str, float]  
+- context.simind_total_num_voxels : int  
+- context.simind_scale_factor : float  
+- context.simind_switches_by_organ : dict[str, str]  
 
 Maintainer / contact: pyazdi@bccrc.ca  
 """
@@ -72,17 +79,20 @@ class SimindSimulationStage:
 
         self.phase_output_dir: str = context.subdir_paths["phase_2"]
         self.stage_cfg: Dict[str, Any] = context.config["phase_2"]["simind_stage"]
-        self.output_dir: str = os.path.join(
-            self.phase_output_dir,
-            self.stage_cfg.get("sub_dir_name", "simind_simulation"),
-        )
+        self.output_dir: str = self.phase_output_dir  
+        self.stage_output_dir: str = os.path.join(  
+            self.phase_output_dir,  
+            self.stage_cfg.get("sub_dir_name", "simind_simulation"),  
+        )  
         os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.stage_output_dir, exist_ok=True)  
 
         # Work directory where SIMIND templates and input binaries are placed.
-        self.work_dir: str = os.path.join(self.output_dir, "work_dir")
+        self.work_dir: str = os.path.join(self.stage_output_dir, "work_dir")  
         os.makedirs(self.work_dir, exist_ok=True)
 
         self.metadata_path: str = os.path.join(self.work_dir, "simind_metadata.json")
+        self.calibration_path: str = os.path.join(self.output_dir, "calib.res")  
 
         self.prefix: str = self.stage_cfg["file_prefix"]
 
@@ -389,6 +399,7 @@ class SimindSimulationStage:
             "stage": "simind_stage",
             "phase_output_dir": self.phase_output_dir,
             "output_dir": self.output_dir,
+            "stage_output_dir": self.stage_output_dir,  
             "work_dir": self.work_dir,
             "file_prefix": self.prefix,
             "simind_exe": self.simind_exe,
@@ -508,18 +519,15 @@ class SimindSimulationStage:
         )
 
         self.context.spect_sim_output_dir = self.output_dir
+        self.context.simind_stage_output_dir = self.stage_output_dir  
+        self.context.simind_work_dir = self.work_dir  
+        self.context.simind_metadata_path = self.metadata_path  
+        self.context.simind_calibration_path = self.calibration_path  
         self.context.simind_projection_paths = simind_projection_paths
-
-        # Optional metadata for debugging
-        self.context.extras["simind_output_dir"] = self.output_dir
-        self.context.extras["simind_work_dir"] = self.work_dir
-        self.context.extras["simind_num_cores"] = self.num_cores
-        self.context.extras["simind_metadata_path"] = self.metadata_path
-        self.context.extras["simind_geometry"] = geometry  
-        self.context.extras["simind_total_num_voxels"] = total_num_voxels  
-        self.context.extras["simind_scale_factor"] = scale_factor  
-        self.context.extras["simind_switches_by_organ"] = simind_switches_by_organ  
-        self.context.extras["simind_roi_list"] = roi_list  
-        self.context.extras["simind_atn_work_path"] = atn_work_path  
+        self.context.simind_num_cores = self.num_cores  
+        self.context.simind_geometry = geometry  
+        self.context.simind_total_num_voxels = total_num_voxels  
+        self.context.simind_scale_factor = scale_factor  
+        self.context.simind_switches_by_organ = simind_switches_by_organ  
 
         return self.context

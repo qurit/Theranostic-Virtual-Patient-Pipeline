@@ -81,8 +81,7 @@ class SimindPreprocessStage:
         self.roi_subset: Sequence[str] = [str(r).strip() for r in roi_subset if str(r).strip()]
 
         # ---- Load ONLY TDT pipeline label map (name -> id) ----
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        self.ts_map_path: str = os.path.join(repo_root, "data", "tdt_map.json")
+        self.ts_map_path: str = context.config["phase_1"]["unification_stage"]["label_map_path"]
         if not os.path.exists(self.ts_map_path):
             raise FileNotFoundError(f"Class map json not found: {self.ts_map_path}")
 

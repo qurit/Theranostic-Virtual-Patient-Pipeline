@@ -70,7 +70,16 @@ class Context:
 
         # Stage 2.2: SIMIND  
         self.spect_sim_output_dir: Optional[str] = None  
-        self.simind_projection_paths: Optional[Dict[str, Any]] = None # {roi_name: path to SIMIND projection output} - legacy / optional
+        self.simind_stage_output_dir: Optional[str] = None  
+        self.simind_work_dir: Optional[str] = None  
+        self.simind_metadata_path: Optional[str] = None  
+        self.simind_calibration_path: Optional[str] = None  
+        self.simind_projection_paths: Optional[Dict[str, Any]] = None # {roi_name: path to SIMIND projection output}
+        self.simind_num_cores: Optional[int] = None  
+        self.simind_geometry: Optional[Dict[str, Any]] = None  
+        self.simind_total_num_voxels: Optional[int] = None  
+        self.simind_scale_factor: Optional[float] = None  
+        self.simind_switches_by_organ: Optional[Dict[str, str]] = None  
 
         # ----------------------------- Phase 3: SPECT Post-Process -----------------------------  
         # Stage 3.1: PBPK  

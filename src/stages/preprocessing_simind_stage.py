@@ -319,8 +319,6 @@ class SimindPreprocessStage:
         """
         out_paths: Dict[str, str] = {}
         for roi_name, lab in class_seg.items():
-            if roi_name == "body":
-                continue
             roi_mask = (roi_body_arr == lab).astype(np.float32)
             out_path = os.path.join(self.output_dir, f"{self.prefix}_{roi_name}_act_av.bin")
             roi_mask.tofile(out_path)

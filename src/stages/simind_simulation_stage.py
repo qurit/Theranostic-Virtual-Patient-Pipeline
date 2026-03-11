@@ -30,12 +30,14 @@ And the following fields from earlier stages:
 - context.arr_shape_new : tuple[int, int, int] (z,y,x)
 - context.arr_px_spacing_cm : tuple[float, float, float] (z,y,x spacing in cm)
 - context.binary_roi_act_map_paths : dict[str, str] ({roi_name: path to binary source map})
+- context.mask_roi_body : dict[int, np.ndarray] (label_id -> boolean mask)  
 - context.atn_av_path : str (attenuation binary)
 
 On success, this stage sets:
 - context.spect_sim_output_dir : str
 - context.simind_projection_paths : dict[str, dict[str, str]]
 - context.extras["simind_output_dir"], ["simind_work_dir"], ["simind_num_cores"], ["simind_metadata_path"]
+- context.extras["simind_geometry"], ["simind_scale_factor"], ["simind_total_num_voxels"], ["simind_switches_by_organ"]  
 
 Maintainer / contact: pyazdi@bccrc.ca  
 """
@@ -46,7 +48,7 @@ import os
 import json
 import shutil
 import subprocess
-from typing import Any, Dict, List  
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -65,8 +67,8 @@ class SimindSimulationStage:
         self.context = context
         self.config: Dict[str, Any] = context.config
 
-        # Repository root is assumed to be two levels above this stage file.
-        self.repo_root: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        # Repository root is assumed to be one level above this stage file.
+        self.repo_root: str = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
         self.phase_output_dir: str = context.subdir_paths["phase_2"]
         self.stage_cfg: Dict[str, Any] = context.config["phase_2"]["simind_stage"]
@@ -103,7 +105,7 @@ class SimindSimulationStage:
         # CPU configuration (validated)
         num_cores = self.stage_cfg["NumCores"]
         max_cores = os.cpu_count() or 1
-        if isinstance(num_cores, bool) or not isinstance(num_cores, int) or num_cores < 0 or num_cores > max_cores:  
+        if isinstance(num_cores, bool) or not isinstance(num_cores, int) or num_cores < 0 or num_cores > max_cores:
             self.num_cores = max_cores
         elif num_cores == 0:  # use all available cores
             self.num_cores = max_cores
@@ -153,21 +155,21 @@ class SimindSimulationStage:
         smc_file = os.path.join(self.repo_root, "data", "smc.smc")
         shutil.copyfile(smc_file, os.path.join(self.work_dir, f"{self.prefix}.smc"))
 
-    def _get_projection_paths_for_organ(self, organ_name: str) -> Dict[str, str]:  
+    def _get_projection_paths_for_organ(self, organ_name: str) -> Dict[str, str]:
         """
         Return output projection paths for a single organ.
         """
-        return {  
-            "w1": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w1.a00"),  
-            "w2": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w2.a00"),  
-            "w3": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w3.a00"),  
+        return {
+            "w1": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w1.a00"),
+            "w2": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w2.a00"),
+            "w3": os.path.join(self.output_dir, f"{self.prefix}_{organ_name}_tot_w3.a00"),
         }
 
-    def _build_projection_path_dict(self, roi_list: List[str]) -> Dict[str, Dict[str, str]]:  
+    def _build_projection_path_dict(self, roi_list: List[str]) -> Dict[str, Dict[str, str]]:
         """
         Return output projection paths for all organs.
         """
-        return {organ_name: self._get_projection_paths_for_organ(organ_name) for organ_name in roi_list}  
+        return {organ_name: self._get_projection_paths_for_organ(organ_name) for organ_name in roi_list}
 
     def _organ_totals_exist(self, organ_name: str) -> bool:
         """
@@ -175,8 +177,8 @@ class SimindSimulationStage:
 
         Returns True if all three energy window totals exist for this organ.
         """
-        organ_paths = self._get_projection_paths_for_organ(organ_name)  
-        return all(os.path.exists(path) for path in organ_paths.values())  
+        organ_paths = self._get_projection_paths_for_organ(organ_name)
+        return all(os.path.exists(path) for path in organ_paths.values())
 
     def _calibration_exists(self) -> bool:
         """Return True if `calib.res` exists in the output directory."""
@@ -209,32 +211,32 @@ class SimindSimulationStage:
         )
         subprocess.run(cmd, shell=True, cwd=self.output_dir, stdout=subprocess.DEVNULL)
 
-    def _get_input_geometry(self, arr_shape: tuple[int, int, int], arr_px_spacing_cm: tuple[float, float, float]) -> Dict[str, float]:  
+    def _get_input_geometry(self, arr_shape: tuple[int, int, int], arr_px_spacing_cm: tuple[float, float, float]) -> Dict[str, float]:
         """
         Derive SIMIND input / output geometry values from preprocessing outputs.
         """
-        input_slice_width = arr_px_spacing_cm[0]  
-        input_pixel_width = arr_px_spacing_cm[1]  
-        input_half_length = input_slice_width * arr_shape[0] / 2.0  
+        input_slice_width = float(arr_px_spacing_cm[0])  
+        input_pixel_width = float(arr_px_spacing_cm[1])  
+        input_half_length = float(input_slice_width * arr_shape[0] / 2.0)  
 
-        output_img_length = input_slice_width * arr_shape[0] / self.output_slice_width  
+        output_img_length = float(input_slice_width * arr_shape[0] / self.output_slice_width)  
 
-        detector_width_cm = self.detector_width  
-        if self.detector_length == 0:  
-            detector_length_cm = arr_shape[0] * input_slice_width  
-        else:  
-            detector_length_cm = self.detector_length  
+        detector_width_cm = float(self.detector_width)  
+        if self.detector_length == 0:
+            detector_length_cm = float(arr_shape[0] * input_slice_width)  
+        else:
+            detector_length_cm = float(self.detector_length)  
 
-        return {  
-            "input_slice_width": input_slice_width,  
-            "input_pixel_width": input_pixel_width,  
-            "input_half_length": input_half_length,  
-            "output_img_length": output_img_length,  
-            "detector_width_cm": detector_width_cm,  
-            "detector_length_cm": detector_length_cm,  
+        return {
+            "input_slice_width": input_slice_width,
+            "input_pixel_width": input_pixel_width,
+            "input_half_length": input_half_length,
+            "output_img_length": output_img_length,
+            "detector_width_cm": detector_width_cm,
+            "detector_length_cm": detector_length_cm,
         }
 
-    def _build_simind_switches(  
+    def _build_simind_switches(
         self,
         atn_name: str,
         act_name: str,
@@ -264,11 +266,11 @@ class SimindSimulationStage:
         - /77: (output image length)
         - /78, /79: (output z pixels, output x pixels)
         """
-        simind_switches = (  
+        simind_switches = (
             f"/fd:{atn_name}"
             f"/fs:{act_name}"
             f"/in:x22,3x"
-            f"/nn:{scale_factor}"  
+            f"/nn:{scale_factor}"
             f"/cc:{self.collimator}"
             f"/fi:{self.isotope}"
             f"/02:{geometry['input_half_length']}"
@@ -289,7 +291,7 @@ class SimindSimulationStage:
             f"/78:{arr_shape[1]}"
             f"/79:{arr_shape[2]}"
         )
-        return simind_switches  
+        return simind_switches
 
     def _aggregate_core_totals_for_organ(self, organ_name: str) -> None:
         """
@@ -332,12 +334,12 @@ class SimindSimulationStage:
         xtot_w2 /= self.num_cores
         xtot_w3 /= self.num_cores
 
-        organ_paths = self._get_projection_paths_for_organ(organ_name)  
+        organ_paths = self._get_projection_paths_for_organ(organ_name)
 
         # save
-        np.asarray(xtot_w1, dtype=np.float32).tofile(organ_paths["w1"])  
-        np.asarray(xtot_w2, dtype=np.float32).tofile(organ_paths["w2"])  
-        np.asarray(xtot_w3, dtype=np.float32).tofile(organ_paths["w3"])  
+        np.asarray(xtot_w1, dtype=np.float32).tofile(organ_paths["w1"])
+        np.asarray(xtot_w2, dtype=np.float32).tofile(organ_paths["w2"])
+        np.asarray(xtot_w3, dtype=np.float32).tofile(organ_paths["w3"])
 
     def _run_simind_for_organ_cores(self, organ_name: str, simind_switches: str) -> None:
         """
@@ -371,7 +373,17 @@ class SimindSimulationStage:
         """
         return os.path.exists(os.path.join(self.work_dir, f"{self.prefix}_{organ_name}_0_tot_w2.h00"))
 
-    def _save_stage_metadata(self, simind_projection_paths: Dict[str, Dict[str, str]]) -> None:
+    def _save_stage_metadata(  
+        self,
+        simind_projection_paths: Dict[str, Dict[str, str]],
+        roi_list: List[str],  
+        geometry: Dict[str, float],  
+        total_num_voxels: int,  
+        scale_factor: float,  
+        simind_switches_by_organ: Dict[str, str],  
+        organ_act_paths: Dict[str, str],  
+        atn_av_path: str,  
+    ) -> None:
         """Save stage-specific metadata for debugging / provenance."""
         metadata: Dict[str, Any] = {
             "stage": "simind_stage",
@@ -393,6 +405,13 @@ class SimindSimulationStage:
             "output_slice_width": self.output_slice_width,
             "energy_window_width": self.energy_window_width,
             "num_cores": self.num_cores,
+            "roi_list": roi_list,  
+            "geometry": geometry,  
+            "total_num_voxels": total_num_voxels,  
+            "scale_factor": scale_factor,  
+            "simind_switches_by_organ": simind_switches_by_organ,  
+            "binary_roi_act_map_paths": organ_act_paths,  
+            "atn_av_path": atn_av_path,  
             "simind_projection_paths": simind_projection_paths,
         }
         with open(self.metadata_path, "w", encoding="utf-8") as f:
@@ -412,6 +431,7 @@ class SimindSimulationStage:
             "arr_shape_new",
             "arr_px_spacing_cm",
             "binary_roi_act_map_paths",
+            "mask_roi_body",  
             "atn_av_path",
         )
 
@@ -419,6 +439,7 @@ class SimindSimulationStage:
         arr_shape = self.context.arr_shape_new
         arr_px_spacing_cm = self.context.arr_px_spacing_cm
         organ_act_paths = self.context.binary_roi_act_map_paths
+        masks = self.context.mask_roi_body  
         atn_av_path = self.context.atn_av_path
 
         if not os.path.exists(atn_av_path):
@@ -428,45 +449,63 @@ class SimindSimulationStage:
         if not roi_list:
             raise ValueError("No ROI binary source maps found for SIMIND simulation.")
 
-        simind_projection_paths = self._build_projection_path_dict(roi_list)  
-        geometry = self._get_input_geometry(arr_shape, arr_px_spacing_cm)  
+        simind_projection_paths = self._build_projection_path_dict(roi_list)
+        geometry = self._get_input_geometry(arr_shape, arr_px_spacing_cm)
 
         self._set_simind_environment()
         self._copy_templates()
 
         # Ensure attenuation map is present in work_dir (SIMIND reads inputs from cwd)
-        atn_name = os.path.basename(atn_av_path)
-        atn_work_path = os.path.join(self.work_dir, atn_name)
+        atn_work_name = f"{self.prefix}_atn_av.bin"
+        atn_work_path = os.path.join(self.work_dir, atn_work_name)
         if not os.path.exists(atn_work_path):
             shutil.copyfile(atn_av_path, atn_work_path)
 
+        # scale factor
+        total_num_voxels = int(np.sum([np.sum(mask) for mask in masks.values()]))  
+        if total_num_voxels <= 0:  
+            raise ValueError("Total number of source voxels is zero; cannot compute SIMIND scale factor.")  
+
+        scale_factor = float(self.num_photons / total_num_voxels / self.num_cores)  
+        simind_switches_by_organ: Dict[str, str] = {}  
+
         for organ_name in roi_list:
             act_path = organ_act_paths[organ_name]
+            act_work_name = f"{self.prefix}_{organ_name}_act_av.bin"
+            act_work_path = os.path.join(self.work_dir, act_work_name)
+            if not os.path.exists(act_work_path):
+                shutil.copyfile(act_path, act_work_path)
+
+            if not os.path.exists(act_path):
+                raise FileNotFoundError(f"Binary ROI source map not found: {act_path}")
+            
+            simind_switches = self._build_simind_switches(  
+                atn_name=atn_work_name,
+                act_name=act_work_name,
+                arr_shape=arr_shape,
+                geometry=geometry,
+                scale_factor=scale_factor,
+            )
+            simind_switches_by_organ[organ_name] = simind_switches  
 
             if self._organ_totals_exist(organ_name) and self._organ_headers_exist(organ_name):
                 continue
-            if not os.path.exists(act_path):
-                raise FileNotFoundError(f"Binary ROI source map not found: {act_path}")
-
-            scale_factor = self.num_photons / self.num_cores  # changed - need to fix
-
-            act_name = os.path.basename(act_path)
-            shutil.copyfile(act_path, os.path.join(self.work_dir, act_name))
-
-            simind_switches = self._build_simind_switches(  
-                atn_name=atn_name,  
-                act_name=act_name,  
-                arr_shape=arr_shape,  
-                geometry=geometry,  
-                scale_factor=scale_factor,  
-            )
 
             self._run_simind_for_organ_cores(organ_name, simind_switches)
             self._aggregate_core_totals_for_organ(organ_name)
 
         self._run_jaszczak_calibration()
 
-        self._save_stage_metadata(simind_projection_paths)
+        self._save_stage_metadata(  
+            simind_projection_paths=simind_projection_paths,
+            roi_list=roi_list,
+            geometry=geometry,
+            total_num_voxels=total_num_voxels,
+            scale_factor=scale_factor,
+            simind_switches_by_organ=simind_switches_by_organ,
+            organ_act_paths=organ_act_paths,
+            atn_av_path=atn_av_path,
+        )
 
         self.context.spect_sim_output_dir = self.output_dir
         self.context.simind_projection_paths = simind_projection_paths
@@ -476,5 +515,11 @@ class SimindSimulationStage:
         self.context.extras["simind_work_dir"] = self.work_dir
         self.context.extras["simind_num_cores"] = self.num_cores
         self.context.extras["simind_metadata_path"] = self.metadata_path
+        self.context.extras["simind_geometry"] = geometry  
+        self.context.extras["simind_total_num_voxels"] = total_num_voxels  
+        self.context.extras["simind_scale_factor"] = scale_factor  
+        self.context.extras["simind_switches_by_organ"] = simind_switches_by_organ  
+        self.context.extras["simind_roi_list"] = roi_list  
+        self.context.extras["simind_atn_work_path"] = atn_work_path  
 
         return self.context

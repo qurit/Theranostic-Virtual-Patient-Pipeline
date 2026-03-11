@@ -32,11 +32,11 @@ from typing import Any, Dict, Literal
 # -----------------------------
 from src.io.context import Context
 
-from stages.segmentation_ts_stage import TotalSegmentationStage
-from stages.unify_seg_tdt_outputs import TdtRoiUnifyStage
-from stages.preprocessing_simind_stage import SimindPreprocessStage
+from src.stages.segmentation_ts_stage import TotalSegmentationStage
+from src.stages.unify_seg_tdt_outputs import TdtRoiUnifyStage
+from src.stages.preprocessing_simind_stage import SimindPreprocessStage
 from src.stages.synthetic_lesions_stage import SyntheticLesionsStage
-from stages.simind_simulation_stage import SimindSimulationStage
+from src.stages.simind_simulation_stage import SimindSimulationStage
 from src.stages.pbpk_stage import PbpkStage
 from src.stages.reconstruction_stage import SpectReconstructionStage
 
@@ -350,7 +350,6 @@ class TdtPipeline:
             print("Synthetic Lesions Generation Stage completed.")
             logger.info("Stage end: Synthetic Lesions Generation | elapsed=%.2fs", time.perf_counter() - t_stage)
         
-        quit()
 
         # -----------------------------  SPECT simulation (via SIMIND) -----------------------------  
         # -----------------------------
@@ -391,6 +390,7 @@ class TdtPipeline:
         print("SIMIND Simulation Stage completed.")
         logger.info("Stage end: SIMIND Simulation | elapsed=%.2fs", time.perf_counter() - t_stage)
 
+        quit()
         # -----------------------------  SPECT post-processing -----------------------------
         # -----------------------------
         # Stage 3.1: PBPK TACs created and applied to projections

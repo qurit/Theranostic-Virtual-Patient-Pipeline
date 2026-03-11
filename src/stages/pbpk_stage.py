@@ -192,17 +192,6 @@ class PbpkStage:
         num_proj = get_header_value(headerdata, "total number of images", int)  
         return int(proj_dim1), int(proj_dim2), int(num_proj)  
 
-    def _reshape_projection_data(  
-        self, projection: np.ndarray, proj_dim1: int, proj_dim2: int, num_proj: int  
-    ) -> np.ndarray:  
-        """
-        Reshape flat `.a00` data into (n_proj, x, y) with y-flip to match recon convention.  
-        """  
-        return np.transpose(  
-            projection.reshape((num_proj, proj_dim2, proj_dim1))[:, ::-1],  
-            (0, 2, 1),  
-        )  
-
     def _read_projection_bin(self, proj_path: str) -> np.ndarray:  
         """
         Read a SIMIND projection .a00 file and reshape using the SIMIND header metadata.  
@@ -217,7 +206,7 @@ class PbpkStage:
                 f"Projection file has unexpected size for {proj_path}. "  
                 f"Got {proj_arr.size}, expected {expected_size} for shape ({self.num_proj}, {self.proj_dim1}, {self.proj_dim2})."  
             )  
-        return self._reshape_projection_data(proj_arr, self.proj_dim1, self.proj_dim2, self.num_proj)  
+        return proj_arr.reshape((self.num_proj, self.proj_dim2, self.proj_dim1))  
 
     def _write_projection_nifti(self, arr_zyx: np.ndarray, out_path: str) -> None:  
         """

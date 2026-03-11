@@ -477,7 +477,12 @@ class SimindSimulationStage:
         if total_num_voxels <= 0:  
             raise ValueError("Total number of source voxels is zero; cannot compute SIMIND scale factor.")  
 
-        scale_factor = float(self.num_photons / total_num_voxels / self.num_cores)  
+        scale_factor = float(self.num_photons / total_num_voxels / self.num_cores)
+        if scale_factor < 1:
+            print(f"Not enough photons for this patient/num_cores, current number of photons: {self.num_photons}")
+            print(f"Increasing to num of photons to: {total_num_voxels * self.num_cores}")
+            scale_factor = 1
+            
         simind_switches_by_organ: Dict[str, str] = {}  
 
         for organ_name in roi_list:

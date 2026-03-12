@@ -83,7 +83,7 @@
             "VOIs": ["Tumor1","Tumor2","Kidney","Heart","SG","Bone","TumorRest","Spleen","Liver","Prostate","GI","Rest","Skin","Muscle","Brain","RedMarrow","Lungs","Adipose"],
             "Randomization_Kidney_SG_Para": true // if True will randomize Kidney and SG parameters (recep density and lamda) NOTE: require have SG and Kidney in roi_subset
             },
-        "spect_reconstruction_stage" : {
+        "reconstruction_stage" : {
             "file_prefix" : "spect_reconstruction", // File name prefix
             "ReconstructionAlgorithm": "OSEM",   // Reconstruction algorithm (only OSEM supported currently)
             "Iterations": 4,    // Number of iterations used in reconstruction

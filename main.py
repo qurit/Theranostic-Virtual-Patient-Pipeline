@@ -408,7 +408,7 @@ class TdtPipeline:
 
         print("PBPK Stage completed.")
         logger.info("Stage end: PBPK | elapsed=%.2fs", time.perf_counter() - t_stage)
-        quit()
+
         # -----------------------------
         # Stage 3.2: SPECT Reconstruction (ie. OSEM + TEW scatter)
         # -----------------------------

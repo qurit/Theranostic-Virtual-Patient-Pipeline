@@ -1,33 +1,35 @@
 """  
 SPECT reconstruction stage for the Theranostic Digital Twin (TDT) pipeline.  
 
-This stage reconstructs quantitative SPECT images from SIMIND-generated windowed projection totals  
+This stage reconstructs quantitative SPECT images from PBPK-weighted windowed projection totals  
 using PyTomography (OSEM + TEW scatter).  
 
 Inputs (from previous stages)  
 ------------------------------ 
-- SIMIND per-frame window totals: <prefix>_<t>min_tot_w{1,2,3}.a00  
+- PBPK per-frame window totals: <pbpk_stage>/<prefix>_<t_hr>_tot_w{1,2,3}.nii.gz  
 - SIMIND headers produced during simulation (work dir): .h00, .cor (optional), .hct  
 - Calibration file produced by SIMIND: calib.res  
 
 Outputs  
 -------  
-- Reconstructed images: <prefix>_<t>min.nii  
-- Attenuation map image in recon grid: <prefix>_atn_img.nii  
+- Reconstructed images (phase 3 root): reconstructed_SPECT_<t_hr>.nii.gz  
+- Attenuation map image in recon grid (reconstruction stage dir): recon_atn_img.nii.gz  
+- Reconstruction metadata (work dir): reconstruction_metadata.json  
 
 Notes  
 -----  
-- `context.extras` is expected to store SIMIND work/output directories. 
-- This stage assumes the SIMIND header naming convention produced by `SimindSimulationStage`.  
+- Reads PBPK projections from `context.pbpk_projection_paths`.  
+- Still uses SIMIND headers / COR / calibration from phase 2.  
 
 Maintainer / contact: pyazdi@bccrc.ca  
 """  
 
 from __future__ import annotations  
 
-from typing import Any, Optional, Sequence, Tuple  
+from typing import Any, Dict, Optional, Sequence, Tuple  
 
 import os
+import json  
 import numpy as np
 import SimpleITK as sitk
 import torch
@@ -43,43 +45,55 @@ from pytomography.transforms.SPECT import SPECTAttenuationTransform, SPECTPSFTra
 
 
 class SpectReconstructionStage:
-    """Reconstruct SPECT images from SIMIND totals using PyTomography. 
+    """Reconstruct SPECT images from PBPK-weighted totals using PyTomography.  
 
     Parameters  
     ----------  
     context : Any  
-        Pipeline context. Must provide PBPK timing config and SIMIND outputs/headers.  
+        Pipeline context. Must provide PBPK timing config, PBPK projection paths, and SIMIND headers.  
     """  
 
     def __init__(self, context: Any) -> None:  
         self.context = context
 
-        # output_dir: where frame totals + calib.res are
-        self.output_dir = getattr(context, "spect_sim_output_dir", None)
-        if self.output_dir is None:
-            self.output_dir = context.extras.get("simind_output_dir", None)
+        self.phase_output_dir: str = context.subdir_paths["phase_3"]  
+        self.stage_cfg: Dict[str, Any] = context.config["phase_3"]["reconstruction_stage"]  
 
-        # fallback (if user runs recon standalone)
-        if self.output_dir is None:
-            self.output_dir = context.subdir_paths["spect_simulation"]
+        self.stage_output_dir: str = os.path.join(  
+            self.phase_output_dir,  
+            self.stage_cfg.get("sub_dir_name", "reconstruction_stage"),  
+        )  
+        os.makedirs(self.phase_output_dir, exist_ok=True)  
+        os.makedirs(self.stage_output_dir, exist_ok=True)  
 
-        os.makedirs(self.output_dir, exist_ok=True)
+        self.work_dir: str = os.path.join(self.stage_output_dir, "work_dir")  
+        os.makedirs(self.work_dir, exist_ok=True)  
+        self.metadata_path: str = os.path.join(self.work_dir, "reconstruction_metadata.json")  
 
         self.mode = context.mode
 
-        # header_dir: where SIMIND wrote .h00/.cor/.hct (work_dir)
-        self.header_dir = context.extras.get("simind_work_dir", self.output_dir)
+        self.pbpk_projection_paths: Dict[str, Dict[str, str]] = getattr(context, "pbpk_projection_paths", None)  
+        if self.pbpk_projection_paths is None:  
+            raise AttributeError("Context missing required field: pbpk_projection_paths")  
 
-        self.prefix = context.config["spect_simulation"]["name"]
+        self.header_dir = getattr(context, "simind_work_dir", None)  
+        if self.header_dir is None:  
+            raise AttributeError("Context missing required field: simind_work_dir")  
 
-        self.frame_start: Sequence[float] = context.config["pbpk"]["FrameStartTimes"]  
-        self.frame_durations: Sequence[float] = context.config["pbpk"]["FrameDurations"]  #in seconds, len(frame_start)
+        self.calibration_file = getattr(context, "simind_calibration_path", None)  
+        if self.calibration_file is None:  
+            self.calibration_file = os.path.join(context.subdir_paths["phase_2"], "calib.res")  
 
-        self.iterations: int = context.config["spect_simulation"]["Iterations"]  
-        self.subsets: int = context.config["spect_simulation"]["Subsets"] 
-        self.output_pixel_width: float = context.config["spect_simulation"]["OutputPixelWidth"]  
-        self.output_slice_width: float = context.config["spect_simulation"]["OutputSliceWidth"]  
-        self.detector_distance: float = context.config["spect_simulation"]["DetectorDistance"] 
+        self.simind_prefix: str = context.config["phase_2"]["simind_stage"]["file_prefix"]  
+        self.output_pixel_width: float = context.config["phase_2"]["simind_stage"]["OutputPixelWidth"]  
+        self.output_slice_width: float = context.config["phase_2"]["simind_stage"]["OutputSliceWidth"]  
+        self.detector_distance: float = context.config["phase_2"]["simind_stage"]["DetectorDistance"]
+
+        self.frame_start: Sequence[float] = context.config["phase_3"]["pbpk_stage"]["FrameStartTimes"]  
+        self.frame_durations: Sequence[float] = context.config["phase_3"]["pbpk_stage"]["FrameDurations"]  
+
+        self.iterations: int = context.config["phase_3"]["reconstruction_stage"]["Iterations"]  
+        self.subsets: int = context.config["phase_3"]["reconstruction_stage"]["Subsets"]    
 
         # (x, y, z) spacing for SimpleITK images created from arrays.
         self.output_tuple: Tuple[float, float, float] = (  
@@ -88,7 +102,7 @@ class SpectReconstructionStage:
             self.output_slice_width,
         )
 
-        self.recon_algorithm: str = context.config["spect_simulation"]["ReconstructionAlgorithm"] 
+        self.recon_algorithm: str = context.config["phase_3"]["reconstruction_stage"]["ReconstructionAlgorithm"]  
 
     # -----------------------------
     # helpers
@@ -115,7 +129,7 @@ class SpectReconstructionStage:
     def _get_metadata_from_header(
         self, photopeak_path: str, lower_path: str, upper_path: str  
     ) -> Tuple[int, int, int, float, float, float]: 
-        """Parse SIMIND header information required to reshape projections."""  
+        """Parse SIMIND header information required to validate PBPK projection NIfTI shape.  """
         with open(photopeak_path, "r") as f:
             headerdata = np.array(f.readlines())
 
@@ -136,18 +150,13 @@ class SpectReconstructionStage:
             np.savetxt(cor_path, cor_path_new)
         return cor_path_new
 
-    def _expected_proj_len(self, proj_dim1: int, proj_dim2: int, num_proj: int) -> int: 
-        """Return expected flattened length of an (n_proj, y, x) projection stack."""  
-        return int(num_proj) * int(proj_dim1) * int(proj_dim2)
-
-    def _reshape_projection_data(
-        self, projection: np.ndarray, proj_dim1: int, proj_dim2: int, num_proj: int  
-    ) -> np.ndarray:  
-        """Reshape flat `.a00` data into (n_proj, x, y) with y-flip to match convention."""  
-        return np.transpose(
-            projection.reshape((num_proj, proj_dim2, proj_dim1))[:, ::-1],
-            (0, 2, 1),
-        )
+    def _read_projection_nifti(self, projection_path: str) -> np.ndarray:  
+        """Read PBPK projection NIfTI and validate shape."""  
+        if not os.path.exists(projection_path):  
+            raise FileNotFoundError(f"Missing projection file: {projection_path}")  
+        proj_img = sitk.ReadImage(projection_path)  
+        proj_arr = sitk.GetArrayFromImage(proj_img).astype(np.float32)  
+        return proj_arr  
 
     def _convert_counts_to_mbq_per_ml(
         self,
@@ -177,6 +186,7 @@ class SpectReconstructionStage:
             n_iters=self.iterations,
             n_subsets=self.subsets,
         )
+        
 
         recon_img_arr = self._convert_counts_to_mbq_per_ml(
             reconstructed_image,
@@ -186,13 +196,14 @@ class SpectReconstructionStage:
             self.output_slice_width,
         )  # MBq / ml
 
+
         recon_img = sitk.GetImageFromArray(recon_img_arr)
         recon_img.SetSpacing(self.output_tuple)
         return recon_img
 
     def _write_recon_atn_img(self, amap: torch.Tensor) -> Tuple[sitk.Image, str]:  
         """Write the attenuation map (from SIMIND headers) as a NIfTI in recon grid."""
-        recon_atn_path = os.path.join(self.output_dir, f"{self.prefix}_atn_img.nii")
+        recon_atn_path = os.path.join(self.stage_output_dir, "recon_atn_img.nii.gz")  
 
         if os.path.exists(recon_atn_path):
             recon_atn_img = sitk.ReadImage(recon_atn_path)
@@ -203,32 +214,83 @@ class SpectReconstructionStage:
         sitk.WriteImage(recon_atn_img, recon_atn_path, imageIO="NiftiImageIO")
         return recon_atn_img, recon_atn_path
 
+    def _save_stage_metadata(  
+        self,  
+        recon_paths: Dict[str, str],  
+        recon_atn_path: str,  
+        sensitivity: float,  
+        photopeak_h: str,  
+        lower_h: str,  
+        upper_h: str,  
+        cor_path: Optional[str],  
+        proj_dim1: int,  
+        proj_dim2: int,  
+        num_proj: int,  
+        ww_peak: float,  
+        ww_lower: float,  
+        ww_upper: float,  
+    ) -> None:  
+        """Save reconstruction-stage metadata for debugging / provenance."""  
+        metadata: Dict[str, Any] = {  
+            "stage": "reconstruction_stage",  
+            "phase_output_dir": self.phase_output_dir,  
+            "stage_output_dir": self.stage_output_dir,  
+            "work_dir": self.work_dir,  
+            "pbpk_projection_paths": self.pbpk_projection_paths,  
+            "reconstructed_spect_paths": recon_paths,  
+            "recon_atn_path": recon_atn_path,  
+            "calibration_file": self.calibration_file,  
+            "sensitivity_counts_per_s_per_mbq": float(sensitivity),  
+            "header_dir": self.header_dir,  
+            "photopeak_h00": photopeak_h,  
+            "lower_h00": lower_h,  
+            "upper_h00": upper_h,  
+            "cor_path": cor_path,  
+            "iterations": int(self.iterations),  
+            "subsets": int(self.subsets),  
+            "reconstruction_algorithm": self.recon_algorithm,  
+            "output_pixel_width_cm": float(self.output_pixel_width),  
+            "output_slice_width_cm": float(self.output_slice_width),  
+            "detector_distance_cm": float(self.detector_distance),  
+            "proj_dim1": int(proj_dim1),  
+            "proj_dim2": int(proj_dim2),  
+            "num_proj": int(num_proj),  
+            "energy_window_widths": {  
+                "peak": float(ww_peak),  
+                "lower": float(ww_lower),  
+                "upper": float(ww_upper),  
+            },  
+            "frame_start_times_min": np.asarray(self.frame_start, dtype=float).tolist(),  
+            "frame_durations_s": np.asarray(self.frame_durations, dtype=float).tolist(),  
+        }  
+        with open(self.metadata_path, "w", encoding="utf-8") as f:  
+            json.dump(metadata, f, indent=4)  
+
     # -----------------------------
     # main
     # -----------------------------
     def run(self) -> Any: 
-        """Run reconstruction for each PBPK frame and write NIfTI recon outputs."""
-        self.context.require("class_seg")
-
+        """Run reconstruction for each PBPK frame and write NIfTI recon outputs."""  
+        self.context.require("class_seg", "pbpk_projection_paths", "simind_work_dir")  
         roi_list = list(self.context.class_seg.keys())
 
-        # sensitivity comes from output_dir (calibration runs in output_dir)
-        calibration_file = os.path.join(self.output_dir, "calib.res")
-        if not os.path.exists(calibration_file):
-            raise FileNotFoundError(f"Calibration file not found: {calibration_file}")
-        sensitivity = self._get_sensitivity_from_calibration_file(calibration_file)
+        # sensitivity comes from phase-2 calibration
+        if not os.path.exists(self.calibration_file):  
+            raise FileNotFoundError(f"Calibration file not found: {self.calibration_file}")  
+        sensitivity = self._get_sensitivity_from_calibration_file(self.calibration_file)  
 
-        # headers come from header_dir (work_dir)
-        photopeak_h = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0_tot_w2.h00")
-        lower_h = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0_tot_w1.h00")
-        upper_h = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0_tot_w3.h00")
+        # headers come from SIMIND work_dir (phase 2)
+        photopeak_h = os.path.join(self.header_dir, f"{self.simind_prefix}_{roi_list[0]}_0_tot_w2.h00")  
+        lower_h = os.path.join(self.header_dir, f"{self.simind_prefix}_{roi_list[0]}_0_tot_w1.h00")  
+        upper_h = os.path.join(self.header_dir, f"{self.simind_prefix}_{roi_list[0]}_0_tot_w3.h00")  
 
         for p in (photopeak_h, lower_h, upper_h):
             if not os.path.exists(p):
                 raise FileNotFoundError(f"Missing SIMIND header file: {p}")
 
+        cor_path: Optional[str] = None  
         if self.detector_distance < 0:
-            cor_path = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0.cor")
+            cor_path = os.path.join(self.header_dir, f"{self.simind_prefix}_{roi_list[0]}_0.cor")  
             if not os.path.exists(cor_path):
                 raise FileNotFoundError(f"Missing COR file: {cor_path}")
             _ = self._get_cor_data(cor_path)
@@ -239,17 +301,20 @@ class SpectReconstructionStage:
         proj_dim1, proj_dim2, num_proj, ww_peak, ww_lower, ww_upper = self._get_metadata_from_header(
             photopeak_h, lower_h, upper_h
         )
-        expected_len = self._expected_proj_len(proj_dim1, proj_dim2, num_proj)
+        
 
-        path_amap = os.path.join(self.header_dir, f"{self.prefix}_{roi_list[0]}_0.hct")
+        
+        path_amap = os.path.join(self.header_dir, f"{self.simind_prefix}_{roi_list[0]}_0.hct")  
         if not os.path.exists(path_amap):
             raise FileNotFoundError(f"Missing attenuation map header (.hct): {path_amap}")
 
         amap = simind.get_attenuation_map(path_amap)
 
+
         att_transform = SPECTAttenuationTransform(amap)
         psf_meta = simind.get_psfmeta_from_header(photopeak_h)
         psf_transform = SPECTPSFTransform(psf_meta)
+        
 
         system_matrix = SPECTSystemMatrix(
             obj2obj_transforms=[att_transform, psf_transform],
@@ -258,37 +323,30 @@ class SpectReconstructionStage:
             proj_meta=proj_meta,
         )
 
-        recon_paths = []
+        recon_paths: Dict[str, str] = {}  
+        pbpk_keys = [f"{float(t)/60.0:.6f}".rstrip("0").rstrip(".") for t in self.frame_start]  
+
         for time_index, time in enumerate(self.frame_start):
-            recon_output_path = os.path.join(self.output_dir, f"{self.prefix}_{time}min.nii")
+            frame_label = f"{float(time)/60.0:.6f}".rstrip("0").rstrip(".")  
+            recon_output_path = os.path.join(  
+                self.phase_output_dir,  
+                f"reconstructed_SPECT_{frame_label}.nii.gz",  
+            )  
 
             if os.path.exists(recon_output_path):
-                recon_paths.append(recon_output_path)
+                recon_paths[frame_label] = recon_output_path  
                 continue
 
-            # frame totals are in output_dir
-            lower_a00 = os.path.join(self.output_dir, f"{self.prefix}_{time}min_tot_w1.a00")
-            photopeak_a00 = os.path.join(self.output_dir, f"{self.prefix}_{time}min_tot_w2.a00")
-            upper_a00 = os.path.join(self.output_dir, f"{self.prefix}_{time}min_tot_w3.a00")
+            if frame_label not in self.pbpk_projection_paths:  
+                raise KeyError(f"Missing PBPK projection paths for frame label: {frame_label}")  
 
-            for p in (lower_a00, photopeak_a00, upper_a00):
-                if not os.path.exists(p):
-                    raise FileNotFoundError(f"Missing projection file: {p}")
+            lower_nifti = self.pbpk_projection_paths[frame_label]["w1"]  
+            photopeak_nifti = self.pbpk_projection_paths[frame_label]["w2"]  
+            upper_nifti = self.pbpk_projection_paths[frame_label]["w3"]  
 
-            lower = np.fromfile(lower_a00, dtype=np.float32)
-            photopeak = np.fromfile(photopeak_a00, dtype=np.float32)
-            upper = np.fromfile(upper_a00, dtype=np.float32)
-
-            if lower.size != expected_len:
-                raise ValueError(f"Projection size mismatch for lower: got {lower.size}, expected {expected_len}")
-            if photopeak.size != expected_len:
-                raise ValueError(f"Projection size mismatch for photopeak: got {photopeak.size}, expected {expected_len}")
-            if upper.size != expected_len:
-                raise ValueError(f"Projection size mismatch for upper: got {upper.size}, expected {expected_len}")
-
-            lower = self._reshape_projection_data(lower, proj_dim1, proj_dim2, num_proj)
-            photopeak = self._reshape_projection_data(photopeak, proj_dim1, proj_dim2, num_proj)
-            upper = self._reshape_projection_data(upper, proj_dim1, proj_dim2, num_proj)
+            lower = self._read_projection_nifti(lower_nifti)  
+            photopeak = self._read_projection_nifti(photopeak_nifti)  
+            upper = self._read_projection_nifti(upper_nifti)  
 
             lower = torch.tensor(lower.copy()).to(pytomography.device)
             photopeak = torch.tensor(photopeak.copy()).to(pytomography.device)
@@ -315,24 +373,43 @@ class SpectReconstructionStage:
 
             recon_img = self._get_recon_img(likelihood, sensitivity, self.frame_durations[time_index])
             sitk.WriteImage(recon_img, recon_output_path, imageIO="NiftiImageIO")
-            recon_paths.append(recon_output_path)
+            recon_paths[frame_label] = recon_output_path  
+
+            
 
         recon_atn_img, recon_atn_path = self._write_recon_atn_img(amap)
 
+        self._save_stage_metadata(  
+            recon_paths=recon_paths,  
+            recon_atn_path=recon_atn_path,  
+            sensitivity=sensitivity,  
+            photopeak_h=photopeak_h,  
+            lower_h=lower_h,  
+            upper_h=upper_h,  
+            cor_path=cor_path,  
+            proj_dim1=proj_dim1,  
+            proj_dim2=proj_dim2,  
+            num_proj=num_proj,  
+            ww_peak=ww_peak,  
+            ww_lower=ww_lower,  
+            ww_upper=ww_upper,  
+        )  
+
         all_frames_exist = all(
-            os.path.exists(os.path.join(self.output_dir, f"{self.prefix}_{t}min.nii"))
-            for t in self.frame_start
+            os.path.exists(os.path.join(self.phase_output_dir, f"reconstructed_SPECT_{f}.nii.gz"))  
+            for f in pbpk_keys  
         )
 
         if self.mode == "PRODUCTION" and all_frames_exist:
-            work_dir = self.context.extras.get("simind_work_dir", None)
+            work_dir = getattr(self.context, "simind_work_dir", None)  
 
-            # only delete if it's a separate work directory (not your main output_dir)
+            # only delete if it's a separate work directory (not your main phase output dir)
             if work_dir:
                 work_dir_abs = os.path.abspath(work_dir)
-                out_abs = os.path.abspath(self.output_dir)
+                out_abs = os.path.abspath(self.phase_output_dir)  
 
                 if work_dir_abs != out_abs and os.path.exists(work_dir_abs):
                     shutil.rmtree(work_dir_abs, ignore_errors=True)
 
+        self.context.reconstruction_output_dir = self.phase_output_dir  
         return self.context

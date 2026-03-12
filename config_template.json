@@ -2,13 +2,13 @@
 // Note: all paths should be absolute paths, and all file names should not include file extension (e.g., .nii) as the pipeline will add that automatically based on input files
 // For help contact pyazdi@bbcrc.ca
 
-    "output_folder_title" : "output_name", // Output folder name, should say this title plus _CT_{index}
+    "output_folder_title" : "testing", // Output folder name, should say this title plus _CT_{index}
     "phase_1": { // Creating Digital Twin: segmentation, unification, synthetic lesion generation 
         "sub_dir_name" : "digital_twin", // subdirectory name
 
         "segmentation_stage": { // TotalSegmentator parameters
             "file_prefix": "segmentation", // File name prefix
-            "roi_subset": ["kidney", "liver" , "prostate", "spleen", "heart","salivary_glands"]
+            "roi_subset": ["liver","kidney", "prostate", "spleen", "heart","salivary_glands"]
             },
 
         "unification_stage" : {
@@ -51,23 +51,23 @@
 
         "preprocess_simind_stage" : {
             "file_prefix": "preprocess_simind", // File name prefix
-            "xy_dim": 256 // x and y dimensions for resizing for SIMIND input (x/value, y/value), z will be scaled based on same ratio
+            "xy_dim": 128 // x and y dimensions for resizing for SIMIND input (x/value, y/value), z will be scaled based on same ratio
             },
 
         "simind_stage": { 
-            "file_prefix": "simind_simulation", // File name prefix
+            "file_prefix": "simind", // File name prefix
             "SIMINDDirectory": "/home/jhubadmin/simind/simind",    // SIMIND: Path to SIMIND executable
             "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
             "Isotope": "lu177",    // Isotope type - refer to SIMIND documentation
-            "NumProjections": 64,   // Number of projections
+            "NumProjections": 10,   // Number of projections
             "NumPhotons": 5e8,    // Number of photons
             "EnergyWindowWidth": 20, // Energy window width [%] around photopeak, e.g., 20 for ±10%
             "DetectorDistance": -10, // Detector distance [cm]. If this number is negative, patient contouring is enabled.
             "DetectorWidth": 53.3,   // Detector width [cm] -> 53.3 is one found online
             "DetectorLength": 0,  // Detector length [cm] NOTE: if value is 0 will use length of CT
-            "OutputImgSize": 256,   // Output image dimensions (shape)
-            "OutputPixelWidth": 0.25, // Output pixel spacing [cm] (x and y)
-            "OutputSliceWidth": 0.25, // Output slice spacing [cm] (z)
+            "OutputImgSize": 128,   // Output image dimensions (shape)
+            "OutputPixelWidth": 0.5, // Output pixel spacing [cm] (x and y)
+            "OutputSliceWidth": 0.5, // Output slice spacing [cm] (z)
             "NumCores": 0 // Number of CPU cores to use for parallel SIMIND simulations
             }
         },

@@ -1,4 +1,4 @@
-# Theranostic Digital Twins (TDT) Pipeline
+# Virtual Theranostic Trial (VTT) Pipeline
 
 > This pipeline creates patient-specific **theranostic digital twins** by combining CT-based anatomy/segmentation with PBPK kinetics and physics-based SPECT simulation/reconstruction, supporting research in diagnosis and therapy planning.
 
@@ -41,14 +41,14 @@ Outputs are written into a per-CT folder (see Outputs).
 
 **Radiopharmaceuticals (RPTs)** couple a targeting molecule with a radionuclide that accumulates in tissues expressing a biomarker (e.g., tumors). As the radionuclide decays, emitted particles can deliver therapy while emitted photons enable quantitative imaging. For example, **¹⁷⁷Lu-PSMA** targets PSMA-expressing prostate cancer and supports post-therapy SPECT imaging.
 
-The **Theranostic Digital Twins (TDT) Pipeline** is a quantitative software framework that uses real patient CT data to build end-to-end digital twins for theranostics research. It integrates:
+The **Virtual Theranostic Trial (VTT) Pipeline** is a quantitative software framework that uses real patient CT data to build end-to-end digital twins for theranostics research. It integrates:
 
 - **Patient-specific anatomy** from clinical CT scans
 - **Organ/tumor segmentation** (e.g., TotalSegmentator-based workflows)
 - **Pharmacokinetic (PBPK) modeling** to generate time-activity behavior
 - **Physics-based SPECT simulation + reconstruction** to produce quantitative images
 
-Because uptake and dose can vary substantially between patients, TDTs support personalized evaluation of therapy strategies by enabling controlled, repeatable experiments across anatomy, kinetics, and imaging physics. A key objective is demonstrating agreement with patient measurements to support reliability and validation; longer-term, this work supports **Virtual Theranostic Trials (VTTs)** and patient-specific dosimetry prediction.
+Because uptake and dose can vary substantially between patients, VTTs support evaluation of therapy strategies by enabling controlled, repeatable experiments across anatomy, kinetics, and imaging physics. A key objective is demonstrating agreement with patient measurements to support reliability and validation.
 
 ![TDT Pipeline Overview](docs/pipeline_overview.png)
 

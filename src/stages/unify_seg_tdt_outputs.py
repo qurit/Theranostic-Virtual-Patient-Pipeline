@@ -10,16 +10,18 @@ into a single multilabel NIfTI volume in the TDT pipeline label space.
 
 Key behaviors
 -------------
-- Uses `src/data/tdt_map.json` to translate TotalSegmentator class IDs -> ROI names -> TDT IDs.
-- Paints a single output volume (`*_tdt_roi_seg.nii.gz`) aligned to the CT NIfTI (affine/header).
+- Uses user-provided `label_map_path` to translate TotalSegmentator class IDs -> ROI names -> TDT IDs.  
+- Paints a single output volume aligned to the CT NIfTI (affine/header).  
 - Only maps ROIs that were requested in the TotalSegmentator plan (`context.totseg_plan`).
+- Writes a stage-local output and the phase handoff file `digital_twin.nii.gz`.  
 
 Expected Context interface
 --------------------------
 The incoming `context` object is expected to provide:
-- context.subdir_paths : dict[str, str] with key "spect_preprocessing"
+- context.subdir_paths : dict[str, str] with key "phase_1"  
 - context.config : dict with:
-    - config["spect_preprocessing"]["name"] : str
+    - config["phase_1"]["unification_stage"]["file_prefix"] : str  
+    - config["phase_1"]["unification_stage"]["label_map_path"] : str 
 - context.ct_nii_path : str (path to CT NIfTI created by TotalSegmentationStage)
 - context.body_ml_path : str (path to body mask from TotalSegmentator)
 - context.total_ml_path : Optional[str] (path to total mask; required if plan.run_total)
@@ -30,7 +32,7 @@ The incoming `context` object is expected to provide:
     - "tdt_roi_subset" : list[str]
 
 On success, this stage sets:
-- context.tdt_roi_seg_path : str (path to unified multilabel NIfTI)
+- context.tdt_roi_seg_path : str (path to unified multilabel NIfTI handoff file)  
 
 Maintainer / contact: pyazdi@bccrc.ca  
 """  
@@ -63,7 +65,7 @@ class TdtRoiUnifyStage:
 
     Notes
     -----
-    The label mapping is defined externally in `src/data/tdt_map.json`:
+    The label mapping is defined externally in the configured label map JSON:  
     - "total": maps TotalSegmentator *label id* -> *ROI name*
     - "head_glands_cavities": maps TotalSegmentator *label id* -> *ROI name*
     - "TDT_Pipeline": maps TDT *label id* -> *TDT ROI name*
@@ -72,18 +74,21 @@ class TdtRoiUnifyStage:
     """  
 
     def __init__(self, context: Any) -> None:  
+        context.require("subdir_paths", "config", "ct_nii_path", "body_ml_path", "totseg_plan")  
         self.context = context
 
-        self.output_dir: str = context.subdir_paths["spect_preprocessing"]  
-        os.makedirs(self.output_dir, exist_ok=True)
+        self.phase_output_dir: str = context.subdir_paths["phase_1"]  
+        self.output_dir: str = os.path.join(self.phase_output_dir, "unification_stage")  
+        self.work_dir: str = os.path.join(self.output_dir, "work_dir")  
+        os.makedirs(self.output_dir, exist_ok=True)  
+        os.makedirs(self.work_dir, exist_ok=True)  
 
-        self.prefix: str = context.config["spect_preprocessing"]["name"]  
+        self.prefix: str = context.config["phase_1"]["unification_stage"]["file_prefix"]  
+        self.final_output_path: str = os.path.join(self.phase_output_dir, "digital_twin.nii.gz")  
+        self.stage_output_path: str = os.path.join(self.output_dir, f"{self.prefix}.nii.gz")  
+        self.metadata_path: str = os.path.join(self.work_dir, f"{self.prefix}_metadata.json")  
 
-        # Locate mapping JSON relative to repository layout.
-        # This assumes the stage file lives at:
-        #   <repo_root>/stages/spect_pre_process/unify_ts_outputs.py
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) 
-        self.ts_map_path: str = os.path.join(repo_root, "data", "tdt_map.json")  
+        self.ts_map_path: str = context.config["phase_1"]["unification_stage"]["label_map_path"]  
         if not os.path.exists(self.ts_map_path):
             raise FileNotFoundError(f"Class map json not found: {self.ts_map_path}")
 
@@ -228,6 +233,24 @@ class TdtRoiUnifyStage:
 
         return roi_unified
 
+    def _save_stage_metadata(self) -> None:  
+        """Save stage-specific metadata for debugging / provenance.""" 
+        metadata: Dict[str, Any] = {  
+            "stage": "unification_stage",  
+            "ct_nii_path": self.ct_nii_path,  
+            "body_ml_path": self.body_ml_path,  
+            "total_ml_path": self.total_ml_path if self.plan.get("run_total", False) else None, 
+            "head_ml_path": self.head_ml_path if self.plan.get("run_head_glands_cavities", False) else None,  
+            "label_map_path": self.ts_map_path,  
+            "output_dir": self.output_dir,  
+            "work_dir": self.work_dir,  
+            "stage_output_path": self.stage_output_path,  
+            "final_output_path": self.final_output_path,  
+            "plan": dict(self.plan),  
+        }  
+        with open(self.metadata_path, "w", encoding="utf-8") as f:  
+            json.dump(metadata, f, indent=4)  
+
     # -----------------------------
     # main
     # -----------------------------
@@ -253,12 +276,20 @@ class TdtRoiUnifyStage:
         roi_unified = self._create_roi_unified(body_seg, total_seg, head_seg)
 
         # Save NIfTI aligned to CT
-        out_path = os.path.join(self.output_dir, f"{self.prefix}_tdt_roi_seg.nii.gz")
-        out_img = nib.Nifti1Image(roi_unified.astype(np.uint8), ct_nii.affine, ct_nii.header)
+        out_img = nib.Nifti1Image(roi_unified.astype(np.uint8), ct_nii.affine, ct_nii.header)  
         out_img.set_data_dtype(np.uint8)
-        nib.save(out_img, out_path)
+        nib.save(out_img, self.stage_output_path)  
+        nib.save(out_img, self.final_output_path)  
+
+        self._save_stage_metadata()  
 
         # Update context
-        self.context.tdt_roi_seg_path = out_path
+        self.context.tdt_roi_seg_path = self.final_output_path  
+        self.context.extras["unification_stage"] = {  
+            "output_dir": self.output_dir,  
+            "work_dir": self.work_dir,  
+            "stage_output_path": self.stage_output_path,  
+            "metadata_path": self.metadata_path,  
+        }  
 
         return self.context

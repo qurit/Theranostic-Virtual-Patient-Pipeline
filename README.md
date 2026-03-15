@@ -1,37 +1,7 @@
 # Virtual Theranostic Trial (VTT) Pipeline
 
-> This pipeline creates patient-specific **theranostic digital twins** by combining CT-based anatomy/segmentation with PBPK kinetics and physics-based SPECT simulation/reconstruction, supporting research in diagnosis and therapy planning.
+This pipeline creates patient-specific **theranostic digital twins** by combining CT-based anatomy/segmentation with PBPK kinetics and physics-based SPECT simulation/reconstruction, supporting research in diagnosis and therapy planning.
 
----
-
-## Quick Start (minimal run)
-1) Create + activate environment
-```bash
-conda env create -f environment.yml
-conda activate TDT_env
-```
-2) Install PyCNO (PBPK dependency)
-```bash
-cd ~
-git clone https://github.com/qurit/PyCNO.git
-cd PyCNO
-pip install -e .
-```
-3) Ensure SIMIND is installed and available
-```bash
-which simind
-echo $SMC_DIR
-```
-4) Prepare inputs
-```bash
-mkdir -p inputs/ct_input
-cp inputs/config_default.json inputs/config.json
-```
-5) Run
-```bash
-python -u main.py --config_file inputs/config.json --input_ct_dir inputs/ct_input
-```
-Outputs are written into a per-CT folder (see Outputs).
 
 ---
 
@@ -50,7 +20,7 @@ The **Virtual Theranostic Trial (VTT) Pipeline** is a quantitative software fram
 
 Because uptake and dose can vary substantially between patients, VTTs support evaluation of therapy strategies by enabling controlled, repeatable experiments across anatomy, kinetics, and imaging physics. A key objective is demonstrating agreement with patient measurements to support reliability and validation.
 
-![TDT Pipeline Overview](docs/pipeline_overview.png)
+![TDT Pipeline Overview](figures/pipeline_overview.png)
 
 ---
 
@@ -58,31 +28,19 @@ Because uptake and dose can vary substantially between patients, VTTs support ev
 ### Requirements
 - Conda (Miniconda/Anaconda)
 - A working C/C++ build toolchain for compiling certain Python dependencies (varies by OS)
-- **PyCNO** installed separately (see Step 2)
-- **SIMIND** installed separately (see Step 3)
+- **SIMIND** installed separately (see Step 2)
 #### Recommended
-- Linux for full pipeline runs (SIMIND workflow tends to be simplest on Linux HPC/servers)
+- Linux for full pipeline runs
 - Enough disk for intermediate SIMIND outputs (can be large depending on photons / frames / ROIs)
 
 ### 1) Create the conda environment (from `environment.yml`)
-> Note: PyCNO is installed separately (Step 2). If `environment.yml` contains a `pycno` entry, remove it before creating the environment.
 ```bash
     conda env create -f environment.yml
     conda activate TDT_env
 ```
 > This environment includes the required Python dependencies used by the pipeline (including TotalSegmentator and PyTomography).
 
-### 2) PBPK dependency (PyCNO)
-**PyCNO is required for the PBPK stage.**
-Install PyCNO from source:
-```bash
-    cd ~
-    git clone https://github.com/qurit/PyCNO.git
-    cd PyCNO 
-    pip install -e .
-```
-
-### 3) Install SIMIND (external)
+### 2) Install SIMIND (external)
 **SIMIND is an external dependency** and must be installed separately (it is not a Python package).
 
 #### Step 1 — Download and install SIMIND
@@ -91,38 +49,13 @@ Download SIMIND from the official site and follow their installation instruction
     https://www.msf.lu.se/en/research/simind-monte-carlo-program/downloads
 ```
 
-#### Step 2 — Add SIMIND to your shell environment (recommended)
-Add the following to your shell startup file so SIMIND is on your PATH and `SMC_DIR` is set.
-
-For **zsh** or **bash**:
-```bash
-    nano ~/.zshrc
-   # or
-    nano ~/.bashrc
-```
-
-Paste (edit the path if your SIMIND install is elsewhere):
-```bash
-    # SIMIND setup
-    SIM_DIR="$HOME/simind/simind"
-    export SMC_DIR="$SIM_DIR/smc_dir/"
-    export PATH="$SIM_DIR:$PATH"
-```
-
-Reload your shell:
-```bash
-    source ~/.zshrc
-    # or
-    source ~/.bashrc
-```
-
 (Optional sanity check)
 ```bash
 which simind
 echo $SMC_DIR
 ```
 
-#### Step 3 — Point the pipeline config to SIMIND
+#### Step 2 — Point the pipeline config to SIMIND
 In your JSON config, set the SIMIND directory to the folder that contains the `simind` executable:
 - `spect_simulation.SIMINDDirectory` = directory that contains the `simind` executable
 

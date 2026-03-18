@@ -2,13 +2,13 @@
 // Note: all paths should be absolute paths, and all file names should not include file extension (e.g., .nii) as the pipeline will add that automatically based on input files
 // For help contact pyazdi@bbcrc.ca
 
-    "output_folder_title" : "testing", // Output folder name, should say this title plus _CT_{index}
+    "output_folder_title" : "testing_dosimetry", // Output folder name, should say this title plus _CT_{index}
     "phase_1": { // Creating Digital Twin: segmentation, unification, synthetic lesion generation 
         "sub_dir_name" : "digital_twin", // subdirectory name
 
         "segmentation_stage": { // TotalSegmentator parameters
             "file_prefix": "segmentation", // File name prefix
-            "roi_subset": ["liver","kidney", "prostate", "spleen", "heart","salivary_glands"]
+            "roi_subset": ["liver"]
             },
 
         "unification_stage" : {
@@ -60,7 +60,7 @@
             "Collimator": "si-me",  // Collimator type - refer to SIMIND documentation
             "Isotope": "lu177",    // Isotope type - refer to SIMIND documentation
             "NumProjections": 10,   // Number of projections
-            "NumPhotons": 5e8,    // Number of photons
+            "NumPhotons": 5e5,    // Number of photons
             "EnergyWindowWidth": 20, // Energy window width [%] around photopeak, e.g., 20 for ±10%
             "DetectorDistance": -10, // Detector distance [cm]. If this number is negative, patient contouring is enabled.
             "DetectorWidth": 53.3,   // Detector width [cm] -> 53.3 is one found online
@@ -68,7 +68,7 @@
             "OutputImgSize": 128,   // Output image dimensions (shape)
             "OutputPixelWidth": 0.5, // Output pixel spacing [cm] (x and y)
             "OutputSliceWidth": 0.5, // Output slice spacing [cm] (z)
-            "NumCores": 0 // Number of CPU cores to use for parallel SIMIND simulations
+            "NumCores": 10 // Number of CPU cores to use for parallel SIMIND simulations
             }
         },
 
@@ -78,8 +78,8 @@
         "pbpk_stage" : {
             "file_prefix" : "pbpk", // File name prefix
             "model_type": "PSMA", // Pipeline only supports "PSMA" model currently
-            "FrameStartTimes": [120, 1440, 2880, 4620, 9360],   // Start time of each frame [min] [240,1440,2880,5760]
-            "FrameDurations": [10,10,10,10,10], // Duration of each frame [seconds]
+            "FrameStartTimes": [120],   // Start time of each frame [min] [240,1440,2880,5760]
+            "FrameDurations": [10], // Duration of each frame [seconds]
             "VOIs": ["Tumor1","Tumor2","Kidney","Heart","SG","Bone","TumorRest","Spleen","Liver","Prostate","GI","Rest","Skin","Muscle","Brain","RedMarrow","Lungs","Adipose"],
             "Randomization_Kidney_SG_Para": true // if True will randomize Kidney and SG parameters (recep density and lamda) NOTE: require have SG and Kidney in roi_subset
             },
@@ -89,5 +89,47 @@
             "Iterations": 4,    // Number of iterations used in reconstruction
             "Subsets": 8   // Number of subsets used in reconstruction
             }
-        } 
-}      
+        },
+
+    "phase_4": { // OpenGATE voxel-source dosimetry
+        "sub_dir_name" : "dosimetry", // subdirectory name
+
+        "opengate_simulation_stage" : {
+            "file_prefix": "opengate_simulation", // File name prefix
+            "save_per_roi_dose_maps": true,
+            "save_summed_dose_map": true,
+            "save_uncertainty_map": true,
+            "save_material_label_image": true,
+            "write_mhd_outputs": false,
+
+            "gate": {
+                "total_histories": 5e7, // total requested histories across all threads (stage compensates so threads do not multiply histories)
+                "num_threads": 10,
+                "random_seed": "auto", // "auto" or integer seed
+                "start_new_process": true
+                },
+
+            "source": {
+                // One or more monoenergetic source components. Each component is split from the requested total histories by relative_weight.
+                "components": [
+                    {
+                        "particle": "gamma",
+                        "energy_kev": 208,
+                        "relative_weight": 0.11
+                        },
+                    {
+                        "particle": "e-",
+                        "energy_kev": 133,
+                        "relative_weight": 0.89
+                        }
+                    ]
+                },
+
+            "physics": {
+                "density_tolerance_gcm3": 0.05,
+                "world_margin_scale": 1.4,
+                "world_min_size_mm": 400.0
+                }
+            }
+        }
+}

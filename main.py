@@ -39,6 +39,7 @@ from src.stages.synthetic_lesions_stage import SyntheticLesionsStage
 from src.stages.simind_simulation_stage import SimindSimulationStage
 from src.stages.pbpk_stage import PbpkStage
 from src.stages.reconstruction_stage import SpectReconstructionStage
+from src.stages.opengate_simulation_stage import DosimetryStage
 
 
 CTInputType = Literal["nii", "dicom"]
@@ -218,7 +219,7 @@ class TdtPipeline:
             )
 
         # Create phase subdirs
-        phases = ["phase_1", "phase_2", "phase_3"]  
+        phases = ["phase_1", "phase_2", "phase_3", "phase_4"]  
         self.sub_dir_paths = {}
         self.sub_dir_names = {}  
         for phase in phases:
@@ -273,7 +274,8 @@ class TdtPipeline:
         3. SPECT post-processing:
             3.1 PBPK TACs created and applied to projections stage
             3.2 SPECT Reconstruction (ie. OSEM + TEW scatter) stage
-        4. (Future) Dosimetry
+        4. Dosimetry:
+            4.1 OpenGATE voxel-source dosimetry stage
 
         Returns
         -------
@@ -422,10 +424,17 @@ class TdtPipeline:
 
         logger.info("Stage end: SPECT Reconstruction | elapsed=%.2fs", time.perf_counter() - t_stage)
 
-        logger.info("Pipeline end | total_elapsed=%.2fs", time.perf_counter() - t_pipeline)
-
         # -----------------------------  Dosimetry -----------------------------
-        # TO DO: implement dosimetry stage
+        print("-----------------------------Phase 4: Dosimetry-----------------------------")
+        logger.info("Stage start: Dosimetry")
+        t_stage = time.perf_counter()
+
+        print("Running Dosimetry Stage...")
+        context = DosimetryStage(context).run()
+        print("Dosimetry Stage completed.")
+
+        logger.info("Stage end: Dosimetry | elapsed=%.2fs", time.perf_counter() - t_stage)
+        logger.info("Pipeline end | total_elapsed=%.2fs", time.perf_counter() - t_pipeline)
 
         print("TDT Pipeline completed successfully.")
         return context

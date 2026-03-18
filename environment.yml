@@ -10,5 +10,5 @@ dependencies:
       - json-minify==0.3.0
       - pytomography==3.4.0
       - totalsegmentator==2.12.0
-      - opengate==10.0.3
       - pycno @ git+https://github.com/qurit/PyCNO.git@main
+      - opengate

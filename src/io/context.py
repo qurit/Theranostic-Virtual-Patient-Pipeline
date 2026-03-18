@@ -97,6 +97,17 @@ class Context:
         # Stage 3.2: Reconstruction  
         self.reconstruction_output_dir: Optional[str] = None  
 
+        # ----------------------------- Phase 4: Dosimetry -----------------------------
+        self.dosimetry_output_dir: Optional[str] = None
+        self.dosimetry_stage_output_dir: Optional[str] = None
+        self.dosimetry_work_dir: Optional[str] = None
+        self.dosimetry_metadata_path: Optional[str] = None
+        self.dosimetry_mask_paths: Optional[Dict[str, str]] = None
+        self.dosimetry_raw_dose_paths: Optional[Dict[str, str]] = None
+        self.dosimetry_raw_uncertainty_paths: Optional[Dict[str, str]] = None
+        self.dosimetry_sum_dose_path: Optional[str] = None
+        self.dosimetry_material_label_path: Optional[str] = None
+
     def require(self, *names: str) -> None:
         """
         Assert that required Context fields exist and are non-None.

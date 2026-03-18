@@ -145,25 +145,13 @@ class DosimetryStage:
             roi_subset = [roi_subset]
         if roi_subset is None:
             raise ValueError("context.downstream_roi_subset must be provided for opengate_simulation_stage")
-        self.requested_roi_subset: List[str] = self._normalize_roi_subset(roi_subset)
+        self.requested_roi_subset: List[str] = roi_subset.copy()
         if not self.requested_roi_subset:
             raise ValueError("No ROI names were found in context.downstream_roi_subset")
 
     # -----------------------------
     # helpers
     # -----------------------------
-    @staticmethod
-    def _normalize_roi_subset(roi_subset: Sequence[str]) -> List[str]:
-        """Return a de-duplicated ROI list while preserving order."""
-        out: List[str] = []
-        seen = set()
-        for roi_name in roi_subset:
-            name = str(roi_name).strip()
-            if not name or name in seen:
-                continue
-            seen.add(name)
-            out.append(name)
-        return out
 
     @staticmethod
     def _load_tdt_label_map(label_map_path: Path) -> Dict[str, int]:
@@ -383,16 +371,6 @@ class DosimetryStage:
 
         return mask_paths, roi_voxel_counts, simulated_roi_names
 
-    def _get_roi_output_paths(self, roi_name: str) -> Dict[str, str]:
-        """Return the final phase-4 NIfTI outputs for a single ROI."""
-        return {
-            "dose": os.path.join(self.output_dir, f"{self.prefix}_dose_raw_{roi_name}.nii.gz"),
-            "uncertainty": os.path.join(
-                self.output_dir,
-                f"{self.prefix}_dose_uncertainty_raw_{roi_name}.nii.gz",
-            ),
-        }
-
     def _run_single_roi(
         self,
         roi_name: str,
@@ -484,7 +462,7 @@ class DosimetryStage:
         if self.save_uncertainty_map:
             dose.dose_uncertainty.output_filename = "dose_uncertainty.mhd"
 
-        sim.run(start_new_process=self.start_new_process)
+        sim.run(start_new_process=self.start_new_process) # run simulation 
         
         if label_image_mhd_path is not None and not label_image_mhd_path.exists():
             label_image_mhd_path = None
@@ -616,19 +594,16 @@ class DosimetryStage:
                 sum_dose_arr += dose_arr
 
             if self.save_per_roi_dose_maps:
-                roi_paths = self._get_roi_output_paths(roi_name)
                 dose_paths[roi_name] = self._save_array_like_reference(
                     ct_img,
                     np.asarray(run_res["dose_arr"], dtype=np.float32),
-                    Path(roi_paths["dose"]),
-                )
+                    os.path.join(self.output_dir, f"{self.prefix}_dose_raw_{roi_name}.nii.gz"))
 
             if self.save_uncertainty_map and run_res["unc_arr"] is not None:
-                roi_paths = self._get_roi_output_paths(roi_name)
                 uncertainty_paths[roi_name] = self._save_array_like_reference(
                     ct_img,
                     np.asarray(run_res["unc_arr"], dtype=np.float32),
-                    Path(roi_paths["uncertainty"]),
+                    os.path.join(self.output_dir, f"{self.prefix}_dose_uncertainty_raw_{roi_name}.nii.gz"),
                 )   
                 
             if (
